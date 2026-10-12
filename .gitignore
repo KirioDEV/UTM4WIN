@@ -1,0 +1,34 @@
+# .NET build output
+**/bin/
+**/obj/
+/packages/
+**/TestResults/
+
+# JetBrains Rider
+.idea/
+*.iml
+_ReSharper.Caches/
+*.DotSettings.user
+
+# Visual Studio / Windows
+.vs/
+*.user
+*.suo
+
+# Codex local configuration
+/.codex/
+
+# UTM reference source (read-only)
+/reference/
+
+# Temporary files
+*.tmp
+*.log
+*.bak
+
+# NuGet
+*.nupkg
+
+# Windows App SDK / MSIX packaging
+AppPackages/
+BundleArtifacts/
