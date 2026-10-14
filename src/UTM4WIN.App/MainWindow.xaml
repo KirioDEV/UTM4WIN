@@ -1,0 +1,32 @@
+<Window x:Class="UTM4WIN.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="UTM4WIN">
+    <Grid x:Name="Root" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <NavigationView x:Name="Navigation" PaneTitle="UTM4WIN" PaneDisplayMode="Auto" IsBackButtonVisible="Collapsed" SelectionChanged="OnNavigationChanged" Header="{x:Bind ViewModel.SectionTitle, Mode=OneWay}">
+            <NavigationView.MenuItems>
+                <NavigationViewItem x:Name="LibraryItem" Content="Virtual machines" Icon="AllApps" AutomationProperties.Name="Virtual machines" />
+            </NavigationView.MenuItems>
+            <NavigationView.PaneFooter>
+                <TextBlock Text="UTM4WIN" Margin="16,12" Style="{StaticResource CaptionTextBlockStyle}" />
+            </NavigationView.PaneFooter>
+            <Grid Padding="24">
+                <Grid Visibility="{x:Bind ToVisibility(ViewModel.IsLibrarySelected), Mode=OneWay}">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" MaxWidth="460">
+                        <FontIcon Glyph="" FontSize="48" HorizontalAlignment="Center" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                        <TextBlock Text="Your virtual machines, in one place" Style="{StaticResource SubtitleTextBlockStyle}" TextAlignment="Center" TextWrapping="Wrap" />
+                        <TextBlock Text="Your library is empty." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+                <ScrollViewer Visibility="{x:Bind ToVisibility(ViewModel.IsSettingsSelected), Mode=OneWay}">
+                    <StackPanel Spacing="16" MaxWidth="680" HorizontalAlignment="Left">
+                        <TextBlock Text="Appearance" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <ComboBox x:Name="ThemePicker" Header="App theme" Width="260" SelectedIndex="0" SelectionChanged="OnThemeChanged" AutomationProperties.Name="App theme">
+                            <ComboBoxItem Content="Use Windows setting" />
+                            <ComboBoxItem Content="Light" />
+                            <ComboBoxItem Content="Dark" />
+                        </ComboBox>
+                        <TextBlock Text="Appearance changes apply to this session." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </NavigationView>
+    </Grid>
+</Window>
