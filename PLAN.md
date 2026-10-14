@@ -1,7 +1,7 @@
 # UTM4WIN Architecture and Development Plan
 
-Status: M0 accepted for the qualified Windows 11 x64/100%-scaled profile; M1 completed following the user's explicit instruction to begin. The repository now contains five application projects, one test project and a native MVVM/DI/logging shell with an empty library and session-only theme settings. CLI/Rider build, source debugging, four unit tests and thirteen native UI checks passed. Actual higher/mixed-DPI qualification remains mandatory at M5. M2–M8 are not started and remain unauthorized; production release and QEMU redistribution are unapproved.
-Evidence reviewed: 2026-10-14. M1 implementation is complete for its foundation scope. Earlier approvals covered the M0 tools, client/guest spikes and operator tests; the user's later instruction to begin authorizes the M1 foundation and its reviewed MVVM/DI/logging/test packages. Subsequent milestones, additional guest-media downloads, unrelated dependencies and system changes require their own authorization.
+Status: M0 accepted for the qualified Windows 11 x64/100%-scaled profile; M1 and M2 completed following their respective user instructions. The application now has typed VM metadata, versioned JSON persistence, library registration and a native editor. Forty automated tests and thirty-two native UI checks passed; CLI and Rider builds succeed. Actual higher/mixed-DPI qualification remains mandatory at M5. M3–M8 are not started and remain unauthorized; production release and QEMU redistribution are unapproved.
+Evidence reviewed: 2026-10-14. The latest continuation authorizes M2 only. Earlier approvals covered M0 feasibility and M1 foundation packages. Subsequent milestones, additional guest-media downloads, unrelated dependencies and system changes require their own authorization.
 
 ## 1. Product goal and scope
 
@@ -278,6 +278,8 @@ Completed on 2026-10-14. Section 29 records the package review, implementation, 
 Scope: typed configuration, drafts/validation, versioned JSON, library registration and metadata; disk tools are not required for model tests.
 Acceptance: create/edit/reload metadata, migrations and unknown schemas behave predictably; duplicate IDs, missing resources, write interruption and unsaved changes tested; removing a library entry preserves disk files. No real guest advertised.
 
+Completed on 2026-10-14; section 30 records the schema policy, persistence boundaries and acceptance evidence.
+
 ### M3 — Creation workflow and managed storage
 
 Scope: profile-based wizard, user ISO, safe new qcow2 creation, commit/rollback of owned artifacts.
@@ -325,7 +327,7 @@ The dependency chain is M0 → M1 → M2 → M3 → M4 → M5, then separately a
 | Host edition and ARM64 support | Unverified support claims | Dedicated hardware/OS qualification before advertising |
 | Package/runtime deployment choice | Clean-machine launch or upgrade failures | M0 development proof; M8 release decision |
 
-Recommended next step: review the M1 shell and start instructions in README.md, then separately authorize M2 for typed VM configuration, validation and versioned metadata persistence. M1 does not implement virtualization or VM creation. Actual higher/mixed-DPI qualification remains a required M5 gate; the restricted client profile and redistribution boundaries remain unchanged.
+Recommended next step: review the M2 metadata library and then separately authorize M3 for the creation workflow and managed storage. M2 does not create a bootable guest or launch virtualization. Actual higher/mixed-DPI qualification remains a required M5 gate; the restricted client profile and redistribution boundaries remain unchanged.
 
 ## 14. Planning validation and change boundary
 
@@ -924,3 +926,36 @@ External evidence: %LOCALAPPDATA%/UTM4WIN/M1/assessment.json, ui-checks.json and
 README.md documents CLI/Rider prerequisites, build/test/start and current behavior. New files are under src/, tests/ and tools/, plus SDK/package/NuGet configuration and project lockfiles; UTM4WIN.sln and PLAN.md are updated. The read-only reference was preserved; no QEMU/VNC binary, ISO or reference source is added to the application. No VM, user disk or Windows feature was touched. All changes remain unstaged/uncommitted.
 
 M1 acceptance is satisfied on the qualification host. Theme choice is session-only, logging is a debugger sink, the core/backend assemblies are boundaries rather than working VM services, and clean-machine deployment/packaging is not verified. Actual higher/mixed-DPI guest input remains mandatory at M5. M2 and later implementation are not authorized by this completion.
+
+## 30. M2 metadata model, persistence and native library
+
+Date: 2026-10-14. The user's "Mach weiter" after the M1 handover authorizes the next planned milestone, M2. No new dependency, executable download, VM launch, disk tool or Windows setting is introduced. M3 and later remain separate approvals.
+
+### Reference inspection and independent design
+
+The local reference was inspected again before implementation. `reference/UTM-main/Configuration/UTMQemuConfiguration.swift`, symbols `init(from:)`, `encode(to:)` and `CodingKeys`, checks backend/version and encodes separate hardware collections. `Configuration/UTMQemuConfigurationDrive.swift`, symbols `init(from:)`, `encode(to:)` and `clone()`, distinguishes internal image names from external resources and gives cloned drives a new identity. `Configuration/UTMConfiguration.swift`, symbols `UTMConfigurationStub`, `load(from:)` and `save(to:)`, dispatches version/backend decoding, supports legacy migration, and performs package/resource preparation and cleanup before plist writing.
+
+These are application-level/macOS package conventions, not QEMU requirements or Windows persistence guarantees. UTM4WIN independently uses immutable C# records, explicit resource ownership, UUID storage directories and a JSON envelope; no source is copied. Upstream's cleanup behavior is not adopted: removing registration never deletes VM/resource files. UTM plist import and upstream schema migration are not implemented.
+
+### Delivered behavior and safety boundaries
+
+- Domain: required identity/backend/profile/hardware fields, immutable storage collection, validation of names, enums, bounds, ownership and duplicate resource IDs/paths. Only the x86_64 Linux BIOS profile is supported. `pc` is an alias in metadata; M4 must pin/qualify a runtime machine version before generating launch arguments. Host capability/capacity, backing chains and writable-session exclusion are future execution/storage checks.
+- Application: `IVmRepository`, revision snapshots, library issues and isolated drafts. App view models own navigation-independent library/editor state and commands; code-behind only handles native view/window integration. No running VM/session exists in M2.
+- Infrastructure: strict schema-1 JSON; rejects duplicate/unknown properties, missing required fields, malformed documents and integer enums. Limits: 1 MiB/document, 1000 registered IDs, 16 resources, 1–64 CPUs and 128–262144 MiB memory. Owned paths are relative `disks/<filename>`; external resources are local absolute read-only references. Resource access and observed reparse points are checked without modifying resource files.
+- Persistence: configurable local library root, default `%LOCALAPPDATA%/UTM4WIN/Library`; apphost accepts only the optional `--library-root` argument. A library-wide exclusive file handle serializes cooperating instances, a stronger/simpler M2 boundary than individual VM locks. SHA-256 revisions reject stale saves. Repository filesystem operations run off the UI thread and accept cancellation tokens.
+- Commits: unique CreateNew temporary sibling, flush to disk, cancellation barrier, then move without overwrite or replace with one retained `.previous` version. Failed temporary writes remove only their owned temporary file. Cancellation after a completed commit cannot undo it. Configuration and index are separate commits: an interrupted registration leaves retained metadata, visible on reload and recoverable through explicit registration. No automatic orphan cleanup/re-registration occurs.
+- UI: add/edit name, CPUs, memory and WHPX/TCG; validation/save errors keep the draft open. Cancel after changes requires Save or explicit Discard changes. Main-window close is blocked during a dialog/operation. Remove confirmation changes only the index; retained IDs can be registered again. Reload reconciles index/config identity and reports missing, unsupported or invalid metadata/resources without silently repairing them. VM row accessibility names show the VM name.
+
+Schema 1 is the first UTM4WIN format; there is no released older schema to migrate. Unsupported older schemas and unknown newer schemas fail clearly and preserve originals. No automatic migration/downgrade/backup restoration is claimed. A corrupt index blocks mutation and requires explicit recovery; unsupported registered configuration remains retained and reported. Path checks reject observed symlinks/junctions/reparse points, but do not establish race-proof security against hostile local replacement or hard-link aliases. Single-file replacement is not a multi-file transaction or tested power-loss guarantee.
+
+Current .NET documentation was fetched with Context7 for strict JSON and duplicate-property handling; official API documentation filled the file commit details. WinUI dialog cancellation/deferral and Toolkit partial properties were checked against current documentation. [Strict JSON in .NET 10](https://learn.microsoft.com/en-us/dotnet/core/whats-new/dotnet-10/libraries), [File.Replace](https://learn.microsoft.com/en-us/dotnet/api/system.io.file.replace?view=net-10.0), [FileStream.Flush](https://learn.microsoft.com/en-us/dotnet/api/system.io.filestream.flush?view=net-10.0), [Toolkit WinUI property guidance](https://learn.microsoft.com/en-us/dotnet/communitytoolkit/mvvm/generators/errors/mvvmtk0045).
+
+### Executed acceptance and remaining limits
+
+CLI Debug build: zero warnings/errors. Forty MSTest cases pass with no skips: round-trip/ownership, schema rejection/original preservation, strict parsing, draft isolation, duplicate identity/resources, missing resources, create/edit/reload, previous version, stale edit, exclusive locking, deterministic interruption before configuration/index commit, cancellation, directory/config identity, remove-with-sentinel preservation, re-registration, editor numeric validation and command coordination. Interruption tests inject exceptions at the internal commit barrier; they do not emulate an actual process kill or power failure.
+
+Thirty-two native UI assertions pass in a separate scratch library: name validation, keyboard focus, explicit draft discard, create/edit/persist, main-window close protection, canceled removal, confirmed removal preserving both metadata and an inert disk sentinel, retained-entry registration, application restart/reload, light/dark/narrow captures, real junction rejection and untouched junction target, normal close and exit code 0. Captures were visually inspected. UI Automation is synthetic operator input, not another physical keyboard or DPI audit. Evidence: `%LOCALAPPDATA%/UTM4WIN/M2/ui-4ca3f450d657479dad0dab0924796f8d/ui-checks.json` and screenshots. Earlier diagnostic attempts exposed the default record accessibility name and asynchronous popup-tree timing; the VM row name was corrected and the harness now waits for native UI readiness. Initial Toolkit field-generation warnings were corrected to documented public partial observable properties.
+
+Rider solution build session `6eb18abc-3d31-4a89-b569-b38b91b1c057` completes successfully with no reported problems; a subsequent CLI locked restore also succeeds without lockfile changes. All test applications closed; the default user library was not populated by testing. README.md documents usage, recovery and limits. Changes are confined to Domain/Application/Infrastructure/App, three new test files, README.md and PLAN.md; project/package versions, Git state/history, reference files and the QEMU adapter boundary are preserved. All changes remain unstaged/uncommitted.
+
+M2 acceptance is satisfied for metadata/library scope on this host. It does not create a disk, install a guest or start QEMU. Full creation is M3, lifecycle/runtime ownership is M4, integrated guest console and actual higher/mixed-DPI qualification are M5. Theme persistence, bounded file logs and clean-machine packaging remain later work.

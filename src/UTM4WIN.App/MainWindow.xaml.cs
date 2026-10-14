@@ -8,17 +8,25 @@ namespace UTM4WIN.App;
 public sealed partial class MainWindow : Window
 {
     public ShellViewModel ViewModel { get; }
+    public LibraryViewModel Library { get; }
 
-    public MainWindow(ShellViewModel viewModel)
+    public MainWindow(ShellViewModel viewModel, LibraryViewModel library, LibraryDialogs dialogs)
     {
         ViewModel = viewModel;
+        Library = library;
         InitializeComponent();
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1100, 760));
         Navigation.SelectedItem = LibraryItem;
-        Root.Loaded += (_, _) => ApplyTitleBarTheme();
+        Root.Loaded += async (_, _) =>
+        {
+            ApplyTitleBarTheme();
+            dialogs.XamlRoot = Root.XamlRoot;
+            await Library.ReloadCommand.ExecuteAsync(null);
+        };
         Root.ActualThemeChanged += (_, _) => ApplyTitleBarTheme();
         ViewModel.PropertyChanged += OnViewModelChanged;
         Closed += (_, _) => ViewModel.PropertyChanged -= OnViewModelChanged;
+        AppWindow.Closing += (_, args) => args.Cancel = Library.IsBusy;
     }
 
     public Visibility ToVisibility(bool value) => value ? Visibility.Visible : Visibility.Collapsed;

@@ -1,8 +1,9 @@
 # UTM4WIN
 
 Native Windows 11 virtual machine manager, built with C#/.NET 10 and WinUI 3.
-M0 feasibility is accepted; M1 provides the application foundation and an empty library shell.
-VM creation, persistence and virtualization are later milestones in [PLAN.md](PLAN.md).
+M0 feasibility is accepted; M1 provides the native application foundation.
+M2 adds a persistent VM metadata library and editor. Disk creation, installation and
+running guests are later milestones in [PLAN.md](PLAN.md).
 
 ## Development
 
@@ -33,17 +34,56 @@ Clean-machine installation and packaging remain M8 work.
 
 ## Structure
 
-- src/UTM4WIN.Domain: independent domain assembly; business models begin in M2.
-- src/UTM4WIN.Application: domain reference and future application use cases.
-- src/UTM4WIN.Infrastructure: Windows persistence/OS adapter boundary.
+- src/UTM4WIN.Domain: immutable VM configuration, resource ownership and validation.
+- src/UTM4WIN.Application: repository port, revision snapshots and isolated drafts.
+- src/UTM4WIN.Infrastructure: versioned JSON repository, library registration and atomic writes.
 - src/UTM4WIN.Virtualization.Qemu: Windows backend boundary.
 - src/UTM4WIN.App: WinUI views, Toolkit MVVM state and DI composition.
 - tests/UTM4WIN.UnitTests: Windows unit tests; no guest or QEMU is required.
 
-The first four assemblies contain project boundaries only. The app implements library/settings
-navigation and System/Light/Dark appearance for the current session. It explicitly declares
+The QEMU assembly remains a boundary. The app implements library/settings navigation,
+metadata editing and System/Light/Dark appearance for the current session. It explicitly declares
 PerMonitorV2; actual higher/mixed-DPI guest input remains a mandatory M5 gate.
 Structured ILogger output currently goes to the debugger; persistent bounded logs are later work.
+
+## Metadata library
+
+Use **Add metadata** to save a name, CPU count, memory and explicit WHPX/TCG selection.
+Select an entry to edit it. These entries describe the x86_64 Linux BIOS profile; they do
+not contain a bootable guest yet. WHPX selection does not enable Windows features or assert
+host availability. Machine alias `pc` is metadata only; a qualified versioned machine and
+runtime resource checks must be established before launching in M4.
+
+Default storage is `%LOCALAPPDATA%/UTM4WIN/Library`: `library.json` contains registered IDs;
+`<vm-id>/vm.json` contains schema-1 configuration. The apphost also accepts
+`--library-root <absolute local directory>` for a separate library. Remote/device paths
+and paths through junctions/symlinks/reparse points are unsupported.
+
+**Remove entry** asks for confirmation and removes only registration. Configuration,
+disks and external resources remain intact. Retained UUID directories are listed separately;
+**Register retained metadata** validates and re-registers an existing configuration.
+Incomplete creation is retained for recovery; it is never silently registered or deleted.
+If registration fails after saving metadata, discard the editor, reload and register the
+retained entry. An empty/incomplete directory needs manual inspection; no cleanup is implicit.
+
+Editors keep drafts and require explicit discard after changes. Concurrent saves check the
+original SHA-256 revision and reject stale edits. A library-wide file lock serializes cooperating
+instances; a busy library reports an I/O error rather than waiting indefinitely. Current metadata
+operations do not start a VM; session/disk ownership guards must be added with M4.
+
+Each write flushes a temporary sibling before move/replace. Replacement retains one `.previous`
+version. This is a single-file commit, not a transaction across configuration and index or a
+guarantee against power loss. Unknown newer schemas and unsupported older schemas fail clearly
+without automatic migration, downgrade or backup restoration. Schema 1 is the first format;
+there is no released older format to migrate. Corrupt metadata is reported; a corrupt index
+blocks mutations and requires explicit recovery from its retained previous version.
+
+Limits: 1000 registered entries, 1 MiB per metadata document, 16 resources, 1–64 CPUs,
+128–262144 MiB memory. Owned resource paths use `disks/<filename>`; external paths are local,
+absolute and read-only. Referenced files must exist and be readable. M2 checks metadata and
+access, not actual disk contents/backing chains, firmware compatibility or runtime capacity.
+Filesystem checks reject observed reparse points; they are not a security boundary against
+hostile local path replacement or hard-link aliases. No user disk is created or deleted.
 
 Packages: CommunityToolkit.Mvvm 8.4.2, Microsoft DI/Debug logging 10.0.9, MSTest 4.1.0
 and Microsoft.NET.Test.Sdk 18.0.1. NuGet metadata was checked for MIT licenses and compatible

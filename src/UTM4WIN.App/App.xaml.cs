@@ -15,7 +15,7 @@ public partial class App : Microsoft.UI.Xaml.Application
     {
         try
         {
-            _services = Composition.CreateServices();
+            _services = Composition.CreateServices(LaunchOptions.ParseLibraryRoot(Environment.GetCommandLineArgs().Skip(1).ToArray()));
             var logger = _services.GetRequiredService<ILogger<App>>();
             _window = _services.GetRequiredService<MainWindow>();
             _window.Closed += (_, _) =>
