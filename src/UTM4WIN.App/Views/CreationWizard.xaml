@@ -79,7 +79,7 @@
                     <CheckBox IsChecked="{x:Bind ViewModel.DiscardIncompleteDisk, Mode=TwoWay}" AutomationProperties.Name="Allow incomplete disk cleanup">
                         <TextBlock Text="Remove only this operation's incomplete disk if I cancel or creation fails." TextWrapping="Wrap" />
                     </CheckBox>
-                    <TextBlock Text="Creation prepares storage and metadata. VM execution is not available yet." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Text="Creation prepares storage and metadata. Start the VM from your library in a separate QEMU window." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
             </ContentControl>
             <ProgressRing IsActive="{x:Bind ViewModel.IsCreating, Mode=OneWay}" Visibility="{x:Bind ToVisibility(ViewModel.IsCreating), Mode=OneWay}" Width="24" Height="24" HorizontalAlignment="Left" />

@@ -7,6 +7,7 @@ using UTM4WIN.Domain;
 namespace UTM4WIN.App.ViewModels;
 
 public sealed class QemuToolSelection {
+    public string SystemToolPath { get; set; } = "";
     public string ImageToolPath { get; set; } = "";
 }
 

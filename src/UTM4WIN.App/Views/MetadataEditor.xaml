@@ -54,8 +54,8 @@
                 </StackPanel>
                 <StackPanel Visibility="{x:Bind ToVisibility(ViewModel.IsDisplaySection), Mode=OneWay}" Spacing="16">
                     <TextBlock Text="Display" Style="{StaticResource SubtitleTextBlockStyle}" />
-                    <TextBlock Text="VNC display" />
-                    <TextBlock Text="Guest display and input are not available yet." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Text="External QEMU window" />
+                    <TextBlock Text="Guest display and input currently use a separate QEMU window. The integrated console is not available yet." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
                 <TextBlock Text="{x:Bind ViewModel.Error, Mode=OneWay}" TextWrapping="Wrap" Foreground="{ThemeResource SystemFillColorCriticalBrush}" AutomationProperties.LiveSetting="Polite" />
             </StackPanel>

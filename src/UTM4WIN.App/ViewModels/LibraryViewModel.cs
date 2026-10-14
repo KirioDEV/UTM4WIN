@@ -34,6 +34,7 @@ public sealed partial class LibraryViewModel : ObservableObject {
     private readonly IVmCreationService _creation;
     private readonly QemuToolSelection _tools;
     private readonly ILogger<CreationWizardViewModel> _creationLogger;
+    private readonly VmSessionService? _sessions;
     [ObservableProperty]
     public partial VmListItem? SelectedMachine {
         get; set;
@@ -80,25 +81,28 @@ public sealed partial class LibraryViewModel : ObservableObject {
     }
 
     public LibraryViewModel(IVmRepository repository, ILibraryDialogs dialogs, ILogger<LibraryViewModel> logger,
-        IVmCreationService creation, QemuToolSelection tools, ILogger<CreationWizardViewModel> creationLogger) {
+        IVmCreationService creation, QemuToolSelection tools, ILogger<CreationWizardViewModel> creationLogger, VmSessionService? sessions = null) {
         _repository = repository;
         _dialogs = dialogs;
         _logger = logger;
         _creation = creation;
         _tools = tools;
         _creationLogger = creationLogger;
+        _sessions = sessions;
         Error = "";
         IsEmpty = true;
         ReloadCommand = new AsyncRelayCommand(() => RunAsync(ReloadAsync), () => !IsBusy);
         CreateCommand = new AsyncRelayCommand(() => RunAsync(CreateAsync), () => !IsBusy);
         AddCommand = new AsyncRelayCommand(() => RunAsync(() => EditAsync(null)), () => !IsBusy);
-        EditCommand = new AsyncRelayCommand(() => RunAsync(() => EditAsync(SelectedMachine)), () => !IsBusy && SelectedMachine is not null);
-        RemoveCommand = new AsyncRelayCommand(() => RunAsync(RemoveAsync), () => !IsBusy && SelectedMachine is not null);
+        EditCommand = new AsyncRelayCommand(() => RunAsync(() => EditAsync(SelectedMachine)), () => !IsBusy && SelectedMachine is not null && !SelectedOwnsResources);
+        RemoveCommand = new AsyncRelayCommand(() => RunAsync(RemoveAsync), () => !IsBusy && SelectedMachine is not null && !SelectedOwnsResources);
         RegisterCommand = new AsyncRelayCommand(() => RunAsync(RegisterAsync), () => !IsBusy && SelectedRetainedId is not null);
     }
 
     public bool HasSelectedMachine => SelectedMachine is not null;
     public bool NoSelectedMachine => SelectedMachine is null;
+    private bool SelectedOwnsResources => SelectedMachine is { } machine && _sessions?.Get(machine.Snapshot.Configuration.Id).OwnsResources == true;
+    public void RefreshSessionCommands() => NotifyCommands();
 
     partial void OnSelectedMachineChanged(VmListItem? value) {
         OnPropertyChanged(nameof(HasSelectedMachine));

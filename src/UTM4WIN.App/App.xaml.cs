@@ -12,14 +12,14 @@ public partial class App : Microsoft.UI.Xaml.Application {
 
     public App() => InitializeComponent();
 
-    protected override void OnLaunched(LaunchActivatedEventArgs args) {
+    protected override async void OnLaunched(LaunchActivatedEventArgs args) {
         try {
             _services = Composition.CreateServices(LaunchOptions.ParseLibraryRoot(Environment.GetCommandLineArgs().Skip(1).ToArray()));
             var logger = _services.GetRequiredService<ILogger<App>>();
             _window = _services.GetRequiredService<MainWindow>();
-            _window.Closed += (_, _) => {
+            _window.Closed += async (_, _) => {
                 logger.LogInformation("Application shell closed.");
-                _services.Dispose();
+                await _services.DisposeAsync();
                 _services = null;
                 _window = null;
             };
@@ -27,7 +27,8 @@ public partial class App : Microsoft.UI.Xaml.Application {
             logger.LogInformation("Application shell started.");
         } catch (Exception error) {
             Trace.TraceError("Application startup failed: {0}", error);
-            _services?.Dispose();
+            if (_services is not null)
+                await _services.DisposeAsync();
             _services = null;
             Environment.ExitCode = 1;
             _window = new Window {

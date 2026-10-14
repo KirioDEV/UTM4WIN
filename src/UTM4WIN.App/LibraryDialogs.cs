@@ -1,6 +1,8 @@
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation;
+using UTM4WIN.Application;
 using UTM4WIN.App.ViewModels;
 using UTM4WIN.App.Views;
 using UTM4WIN.Domain;
@@ -8,6 +10,71 @@ using UTM4WIN.Domain;
 namespace UTM4WIN.App;
 
 public sealed class LibraryDialogs : ILibraryDialogs {
+    public async Task ShowDiagnosticsAsync(string diagnostics) {
+        var text = new TextBox {
+            Text = diagnostics.Length == 0 ? "No QEMU stderr diagnostics were captured." : diagnostics,
+            IsReadOnly = true,
+            TextWrapping = TextWrapping.Wrap,
+            AcceptsReturn = true,
+            MinWidth = 380,
+            MaxHeight = 380
+        };
+        AutomationProperties.SetName(text, "QEMU stderr diagnostics");
+        var dialog = new ContentDialog {
+            XamlRoot = XamlRoot,
+            RequestedTheme = Theme,
+            Title = "QEMU diagnostics",
+            CloseButtonText = "Close",
+            Content = text
+        };
+        await dialog.ShowAsync();
+    }
+    public async Task<VmStartOptions?> ConfirmStartAsync(string name, string executable) {
+        var path = new TextBox { Header = "QEMU system executable", Text = executable, MinWidth = 380 };
+        AutomationProperties.SetName(path, "QEMU system executable path");
+        var boot = new CheckBox { Content = "Boot the configured installation ISO once", IsChecked = true };
+        var content = new StackPanel { Spacing = 16 };
+        content.Children.Add(new TextBlock { Text = "The guest opens in a separate QEMU window. Integrated display and networking are not available yet. The current QEMU build requires ASCII-only library, ISO and tool paths.", TextWrapping = TextWrapping.Wrap, MaxWidth = 460 });
+        content.Children.Add(path);
+        content.Children.Add(boot);
+        var dialog = new ContentDialog {
+            XamlRoot = XamlRoot,
+            RequestedTheme = Theme,
+            Title = "Start " + name,
+            Content = content,
+            PrimaryButtonText = "Start VM",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close
+        };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary ? new(path.Text.Trim(), true, boot.IsChecked == true) : null;
+    }
+
+    public async Task<bool> ConfirmForceStopAsync(string name) {
+        var dialog = new ContentDialog {
+            XamlRoot = XamlRoot,
+            RequestedTheme = Theme,
+            Title = "Force stop?",
+            Content = $"Force stop {name}? Unsaved guest data can be lost and the guest filesystem can be damaged. Disk files will be kept.",
+            PrimaryButtonText = "Force stop",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close
+        };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
+
+    public async Task<ContentDialogResult> ConfirmCloseSessionsAsync() {
+        var dialog = new ContentDialog {
+            XamlRoot = XamlRoot,
+            RequestedTheme = Theme,
+            Title = "Virtual machines are still active",
+            Content = "Request guest shutdown and keep this window open until the VMs exit, or explicitly force stop and exit. Force stop can lose guest data and damage guest filesystems.",
+            PrimaryButtonText = "Request shutdown",
+            SecondaryButtonText = "Force stop and exit",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close
+        };
+        return await dialog.ShowAsync();
+    }
     public WindowId WindowId {
         private get; set;
     }

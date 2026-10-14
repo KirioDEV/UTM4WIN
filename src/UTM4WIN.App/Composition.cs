@@ -15,6 +15,10 @@ public static class Composition {
         services.AddSingleton(_ => new JsonVmRepository(libraryRoot ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "UTM4WIN", "Library")));
         services.AddSingleton<IVmRepository>(provider => provider.GetRequiredService<JsonVmRepository>());
+        services.AddSingleton<IVmExecutionLeaseProvider>(provider => provider.GetRequiredService<JsonVmRepository>());
+        services.AddSingleton<IVmBackend, QemuBackend>();
+        services.AddSingleton<VmSessionService>();
+        services.AddSingleton<SessionViewModel>();
         services.AddSingleton<IDiskImageService, QemuImgDiskService>();
         services.AddSingleton<IVmCreationService, VmCreationService>();
         services.AddSingleton<QemuToolSelection>();

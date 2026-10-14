@@ -69,6 +69,8 @@
                                     <MenuFlyoutItem Text="Reload library" Command="{x:Bind Library.ReloadCommand}" />
                                     <MenuFlyoutSeparator />
                                     <MenuFlyoutItem Text="Remove entry" Command="{x:Bind Library.RemoveCommand}" />
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem Text="QEMU diagnostics" Command="{x:Bind Session.DiagnosticsCommand}" />
                                 </MenuFlyout>
                             </Button.Flyout>
                         </Button>
@@ -77,17 +79,25 @@
                 <StackPanel Grid.Row="1" Spacing="4" Margin="16,0">
                     <ProgressBar IsIndeterminate="True" Visibility="{x:Bind ToVisibility(Library.IsBusy), Mode=OneWay}" Height="3" AutomationProperties.Name="Library operation in progress" />
                     <TextBlock x:Name="LibraryError" Text="{x:Bind Library.Error, Mode=OneWay}" TextWrapping="Wrap" MaxHeight="100" Foreground="{ThemeResource SystemFillColorCriticalBrush}" AutomationProperties.LiveSetting="Polite" />
+                    <TextBlock Text="{x:Bind Session.Error, Mode=OneWay}" TextWrapping="Wrap" MaxHeight="100" Foreground="{ThemeResource SystemFillColorCriticalBrush}" AutomationProperties.LiveSetting="Polite" />
                 </StackPanel>
                 <Grid Grid.Row="2" Visibility="{x:Bind ToVisibility(ViewModel.IsLibrarySelected), Mode=OneWay}">
                     <ScrollViewer Visibility="{x:Bind ToVisibility(Library.HasSelectedMachine), Mode=OneWay}" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel>
                             <Border x:Name="Preview" Background="{ThemeResource LayerFillColorAltBrush}" SizeChanged="OnPreviewSizeChanged" MinHeight="190" MaxHeight="420">
                                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12" Padding="24">
-                                    <Button IsEnabled="False" AutomationProperties.Name="Run VM unavailable" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="VM execution is not available yet">
+                                    <Button Command="{x:Bind Session.StartCommand}" AutomationProperties.Name="Run VM" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="Start in an external QEMU window">
                                         <FontIcon Glyph="" FontSize="64" />
                                     </Button>
                                     <TextBlock Text="No saved display" Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
-                                    <TextBlock Text="VM execution is not available yet." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" />
+                                    <TextBlock Text="Guest display opens in a separate QEMU window." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                                        <Button Content="Pause" Command="{x:Bind Session.PauseCommand}" />
+                                        <Button Content="Resume" Command="{x:Bind Session.ResumeCommand}" />
+                                        <Button Content="Shut down" Command="{x:Bind Session.ShutdownCommand}" />
+                                        <Button Content="Force stop" Command="{x:Bind Session.ForceStopCommand}" />
+                                    </StackPanel>
+                                    <Button Content="Cancel startup" Command="{x:Bind Session.CancelStartCommand}" HorizontalAlignment="Center" />
                                 </StackPanel>
                             </Border>
                             <Grid Padding="24,20" RowSpacing="16" ColumnSpacing="24">
@@ -104,7 +114,7 @@
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="Status" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                <TextBlock Grid.Column="1" Text="{x:Bind Library.SelectedMachine.StatusLabel, Mode=OneWay}" HorizontalAlignment="Right" />
+                                <TextBlock x:Name="SessionState" Grid.Column="1" Text="{x:Bind Session.StatusLabel, Mode=OneWay}" HorizontalAlignment="Right" AutomationProperties.LiveSetting="Polite" />
                                 <TextBlock Grid.Row="1" Text="Architecture" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                 <TextBlock Grid.Row="1" Grid.Column="1" Text="x86_64" HorizontalAlignment="Right" />
                                 <TextBlock Grid.Row="2" Text="Machine" Style="{StaticResource BodyStrongTextBlockStyle}" />

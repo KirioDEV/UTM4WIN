@@ -8,6 +8,9 @@ namespace UTM4WIN.Virtualization.Qemu;
 internal sealed class OwnedToolProcess : IDisposable {
     private readonly SafeFileHandle _job, _process, _thread;
     private bool _disposed;
+    public uint ProcessId {
+        get; private set;
+    }
     public StreamWriter Input {
         get;
     }
@@ -85,6 +88,7 @@ internal sealed class OwnedToolProcess : IDisposable {
             handles.Add(process);
             handles.Add(thread);
             child = new(job, process, thread, input.Write, output.Read, error.Read);
+            child.ProcessId = information.ProcessId;
             ToolNative.Check(ToolNative.IsProcessInJob(process, job, out bool contained));
             if (!contained)
                 throw new IOException("Tool process containment could not be verified.");
@@ -105,14 +109,15 @@ internal sealed class OwnedToolProcess : IDisposable {
         }
     }
 
-    public void Resume() {
+    public void Resume(bool keepInputOpen = false) {
         uint previous = ToolNative.ResumeThread(_thread);
         if (previous == uint.MaxValue)
             throw new Win32Exception(Marshal.GetLastPInvokeError());
         if (previous != 1)
             throw new IOException("Unexpected tool process suspend count.");
         _thread.Dispose();
-        Input.Dispose();
+        if (!keepInputOpen)
+            Input.Dispose();
     }
 
     public uint ExitCode {

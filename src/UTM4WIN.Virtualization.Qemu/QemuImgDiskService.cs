@@ -64,7 +64,7 @@ public sealed class QemuImgDiskService : IDiskImageService {
         }
     }
 
-    private static async Task<string> RunAsync(string executable, string[] arguments, CancellationToken cancellationToken) {
+    internal static async Task<string> RunAsync(string executable, string[] arguments, CancellationToken cancellationToken) {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(TimeSpan.FromSeconds(30));
         using var child = OwnedToolProcess.Start(executable, arguments, Path.GetDirectoryName(executable)!);
@@ -100,7 +100,7 @@ public sealed class QemuImgDiskService : IDiskImageService {
         } catch { deadline.Cancel(); throw; }
     });
 
-    private static void CheckPath(string path) {
+    internal static void CheckPath(string path) {
         if (!Path.IsPathFullyQualified(path) || path.StartsWith(@"\\", StringComparison.Ordinal))
             throw new ConfigurationException("Local absolute disk-tool and destination paths are required.");
         for (string? current = Path.GetFullPath(path); current is not null; current = Path.GetDirectoryName(current)) {

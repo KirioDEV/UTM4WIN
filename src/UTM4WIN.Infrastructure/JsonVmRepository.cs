@@ -4,7 +4,7 @@ using UTM4WIN.Domain;
 
 namespace UTM4WIN.Infrastructure;
 
-public sealed class JsonVmRepository : IVmRepository {
+public sealed partial class JsonVmRepository : IVmRepository, IVmExecutionLeaseProvider {
     private const int MaximumDocumentBytes = 1024 * 1024;
     private readonly string _root;
     private readonly AtomicFileWriter _writer;
@@ -66,6 +66,7 @@ public sealed class JsonVmRepository : IVmRepository {
     }, cancellationToken);
 
     public Task<VmSnapshot> SaveAsync(VmConfiguration configuration, string expectedRevision, CancellationToken cancellationToken = default) => WithLockAsync(async () => {
+        using var sessionLock = LockSession(configuration.Id);
         byte[] bytes = ConfigurationJson.Serialize(configuration);
         var index = await ReadIndexAsync(cancellationToken);
         if (!index.Ids.Contains(configuration.Id))
@@ -145,6 +146,7 @@ public sealed class JsonVmRepository : IVmRepository {
     }
 
     public Task RegisterAsync(Guid id, CancellationToken cancellationToken = default) => WithLockAsync(async () => {
+        using var sessionLock = LockSession(id);
         var index = await ReadIndexAsync(cancellationToken);
         if (index.Ids.Contains(id))
             throw new ConfigurationConflictException("This VM is already registered.");
@@ -157,6 +159,7 @@ public sealed class JsonVmRepository : IVmRepository {
     }, cancellationToken);
 
     public Task RemoveAsync(Guid id, CancellationToken cancellationToken = default) => WithLockAsync(async () => {
+        using var sessionLock = LockSession(id);
         var index = await ReadIndexAsync(cancellationToken);
         if (!index.Ids.Contains(id))
             throw new ConfigurationConflictException("This VM is no longer registered.");
@@ -241,7 +244,7 @@ public sealed class JsonVmRepository : IVmRepository {
             string path = resource.Ownership == ResourceOwnership.Owned
                 ? Path.Combine(VmDirectory(configuration.Id), resource.Path.Replace('/', Path.DirectorySeparatorChar)) : resource.Path;
             PathSafety.Check(path);
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         }
     }
 

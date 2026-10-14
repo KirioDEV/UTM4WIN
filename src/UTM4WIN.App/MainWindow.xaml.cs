@@ -14,11 +14,18 @@ public sealed partial class MainWindow : Window {
     public LibraryViewModel Library {
         get;
     }
+    public SessionViewModel Session {
+        get;
+    }
+    private bool _closePending;
+    private bool _allowClose;
 
-    public MainWindow(ShellViewModel viewModel, LibraryViewModel library, LibraryDialogs dialogs) {
+    public MainWindow(ShellViewModel viewModel, LibraryViewModel library, LibraryDialogs dialogs, SessionViewModel session) {
         ViewModel = viewModel;
         Library = library;
+        Session = session;
         InitializeComponent();
+        Session.Dispatch = callback => DispatcherQueue.TryEnqueue(() => callback());
         AppWindow.Resize(new SizeInt32(1100, 760));
         Root.Loaded += async (_, _) => {
             ApplyTitleBarTheme();
@@ -30,7 +37,20 @@ public sealed partial class MainWindow : Window {
         Root.ActualThemeChanged += (_, _) => { ApplyTitleBarTheme(); dialogs.Theme = Root.ActualTheme; };
         ViewModel.PropertyChanged += OnViewModelChanged;
         Closed += (_, _) => ViewModel.PropertyChanged -= OnViewModelChanged;
-        AppWindow.Closing += (_, args) => args.Cancel = Library.IsBusy;
+        AppWindow.Closing += async (_, args) => {
+            if (_allowClose)
+                return;
+            args.Cancel = Library.IsBusy || _closePending || Session.HasActiveSessions;
+            if (!args.Cancel || Library.IsBusy || _closePending)
+                return;
+            _closePending = true;
+            try {
+                if (await Session.PrepareCloseAsync()) {
+                    _allowClose = true;
+                    Close();
+                }
+            } finally { _closePending = false; }
+        };
     }
 
     public Visibility ToVisibility(bool value) => value ? Visibility.Visible : Visibility.Collapsed;

@@ -3,8 +3,9 @@
 Native Windows 11 virtual machine manager, built with C#/.NET 10 and WinUI 3.
 M0 feasibility is accepted; M1 provides the native application foundation.
 M2 adds a persistent VM metadata library and editor; M3 adds a creation wizard with
-read-only installation media and a managed qcow2 disk. Installing and running guests
-are later milestones in [PLAN.md](PLAN.md).
+read-only installation media and a managed qcow2 disk. M4 adds owned QEMU sessions,
+pause/resume and shutdown controls with an interim external guest window.
+The integrated Linux workflow remains later work in [PLAN.md](PLAN.md).
 
 ## Development
 
@@ -36,16 +37,16 @@ Clean-machine installation and packaging remain M8 work.
 ## Structure
 
 - src/UTM4WIN.Domain: immutable VM configuration, resource ownership and validation.
-- src/UTM4WIN.Application: repository/creation/disk ports, revision snapshots and isolated drafts.
-- src/UTM4WIN.Infrastructure: versioned JSON repository, library registration and creation coordination.
-- src/UTM4WIN.Virtualization.Qemu: qualified qcow2 creation and owned Windows tool processes.
+- src/UTM4WIN.Application: repository/creation/execution ports, session orchestration, revision snapshots and drafts.
+- src/UTM4WIN.Infrastructure: versioned JSON repository, library registration, creation and execution leases.
+- src/UTM4WIN.Virtualization.Qemu: qualified disk tools, QMP and owned Windows QEMU processes.
 - src/UTM4WIN.App: WinUI views, Toolkit MVVM state and DI composition.
 - tests/UTM4WIN.UnitTests: Windows unit tests and separately categorized QEMU integration tests.
 
 The app follows UTM's sidebar and selected-VM detail composition, with grouped VM settings,
 a guided creation wizard and System/Light/Dark appearance for the current session.
 Narrow windows use an overlay sidebar, opened by the toolbar button. The preview is an
-explicit placeholder and its Run action is disabled until VM execution is implemented.
+explicit placeholder; **Run VM** starts a separate QEMU window for a configured managed disk.
 It explicitly declares
 PerMonitorV2; actual higher/mixed-DPI guest input remains a mandatory M5 gate.
 Structured ILogger output currently goes to the debugger; persistent bounded logs are later work.
@@ -76,7 +77,8 @@ retained entry. An empty/incomplete directory needs manual inspection; no cleanu
 Editors keep drafts and require explicit discard after changes. Concurrent saves check the
 original SHA-256 revision and reject stale edits. A library-wide file lock serializes cooperating
 instances; a busy library reports an I/O error rather than waiting indefinitely. Current metadata
-operations do not start a VM; session/disk ownership guards must be added with M4.
+operations do not start a VM. Active execution leases prevent cooperating instances from
+editing, removing or starting the same VM until confirmed process exit.
 
 Each write flushes a temporary sibling before move/replace. Replacement retains one `.previous`
 version. This is a single-file commit, not a transaction across configuration and index or a
@@ -127,20 +129,64 @@ Arguments use tested Windows quoting, with no shell or arbitrary extra arguments
 has a 30-second deadline and bounded output; uncertain cleanup retains the disk rather than
 deleting a file a process might still use. Library creation remains serialized by its file lock.
 
-Creation prepares disk/configuration/library registration. VM launch, installation and
-lifecycle controls begin with separately approved M4 work. Network configuration remains
-disabled for now; integrated NAT/console qualification belongs to M5.
+Creation prepares disk/configuration/library registration. Use the library Run action
+to launch it; network configuration remains disabled. Integrated NAT/console qualification
+and the complete installation/reboot workflow belong to M5.
+
+## Run and control a VM
+
+Select a created VM and choose **Run VM**. Confirm the external `qemu-system-x86_64.exe`
+from the qualified QEMU 11.1.0 installation; its SHA-256 is pinned in QemuBackend and the
+sibling image tool must also match. The installation and its DLLs remain trusted external
+tools. Executable selection is session-only; nothing is downloaded or bundled.
+
+The launch profile pins `pc-i440fx-9.2`, BIOS, virtio qcow2 storage and optional read-only
+IDE installation media. **Boot the configured installation ISO once** starts the installer;
+clear it to boot an installed disk. No disk is converted, reset or deleted on start.
+Only one owned writable qcow2 and optionally one external ISO are currently supported.
+Networking remains disabled. The current Windows system binary cannot open non-ASCII
+resource paths: library, ISO and QEMU installation paths must be ASCII-only. Creation's
+broader path support does not imply runtime compatibility; files are never relocated automatically.
+
+QEMU's SDL window provides the interim display/input. The app does not embed this window
+or expose a VNC/QMP network listener. WinUI's preview remains a placeholder. Closing the
+QEMU window ends that process and is reported as an unexpected exit; use the app's controls
+for deliberate shutdown. Running means QEMU confirms running virtual CPUs, not a fully booted OS.
+
+**Pause** and **Resume** reconcile actual QMP status. **Shut down** requests guest cooperation,
+resuming a paused guest first. The process and resource locks remain owned until guest shutdown
+is observed and QEMU exits. After thirty seconds without shutdown, continue waiting, retry or
+choose **Force stop** with explicit confirmation. Force stop can lose guest data or damage
+the guest filesystem; it does not delete disk files. A lost control connection preserves
+ownership and offers force stop rather than allowing unsafe edits/restarts.
+
+Closing the app while VMs are active offers shutdown, cancellation or explicitly forced exit.
+There is no detached mode. Job ownership also terminates the child on parent-process failure.
+No persisted PID is used to find or kill processes. Startup cancellation waits for cleanup;
+uncertain cleanup retains ownership for recovery. Windows capabilities/available memory are
+checked without changing host settings, and WHPX failures never silently fall back to TCG.
+Memory availability is a volatile preflight observation, not a reservation.
+
+**Library actions → QEMU diagnostics** shows the current or most recently ended session's
+read-only stderr tail, bounded to 64 Ki characters. State changes/errors also use structured
+debugger logging. Diagnostics and session state are not persisted across application restart.
 
 Ordinary unit tests use inert fixtures and require no QEMU or guest. Run the explicit integration
 suite only with the approved binary; it creates disposable new images in a unique temp directory:
 
 ```powershell
 $env:UTM4WIN_TEST_QEMU_IMG = 'C:\path\to\approved\qemu-img.exe'
+$env:UTM4WIN_TEST_QEMU_SYSTEM = 'C:\path\to\approved\qemu-system-x86_64.exe'
+$env:UTM4WIN_TEST_ISO = 'C:\path\to\approved\debian.iso'
+# Optional: an already qualified disposable BIOS guest, copied into a new test directory.
+$env:UTM4WIN_TEST_DISPOSABLE_GUEST = 'C:\path\to\disposable-test-guest.qcow2'
 dotnet test UTM4WIN.sln --no-build --filter "TestCategory=QemuIntegration"
 ```
 
-No real guest is started by those tests. Without an explicit tool path they are inconclusive;
-keep the category filter for an ordinary unit-only run.
+Lifecycle tests boot disposable guests and terminate only their owned test processes; image
+tests create unique temporary disks. The optional installed-guest test opens its source read-only
+and boots a new copy. Tests without their explicit tool/media paths are inconclusive.
+Keep the exclusion filter for an ordinary unit-only run.
 
 Packages: CommunityToolkit.Mvvm 8.4.2, Microsoft DI/Debug logging 10.0.9, MSTest 4.1.0
 and Microsoft.NET.Test.Sdk 18.0.1. NuGet metadata was checked for MIT licenses and compatible
