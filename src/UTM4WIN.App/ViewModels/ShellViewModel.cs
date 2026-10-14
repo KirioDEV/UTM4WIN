@@ -3,21 +3,28 @@ using Microsoft.Extensions.Logging;
 
 namespace UTM4WIN.App.ViewModels;
 
-public enum ShellSection { Library, Settings }
-public enum AppTheme { System, Light, Dark }
+public enum ShellSection {
+    Library,
+    Settings
+}
 
-public sealed class ShellViewModel(ILogger<ShellViewModel> logger) : ObservableObject
-{
+public enum AppTheme {
+    System,
+    Light,
+    Dark
+}
+
+public sealed class ShellViewModel(ILogger<ShellViewModel> logger) : ObservableObject {
     private ShellSection _section = ShellSection.Library;
     private AppTheme _theme = AppTheme.System;
 
-    public ShellSection Section
-    {
+    public ShellSection Section {
         get => _section;
-        set
-        {
-            if (!Enum.IsDefined(value)) throw new ArgumentOutOfRangeException(nameof(value));
-            if (!SetProperty(ref _section, value)) return;
+        set {
+            if (!Enum.IsDefined(value))
+                throw new ArgumentOutOfRangeException(nameof(value));
+            if (!SetProperty(ref _section, value))
+                return;
             OnPropertyChanged(nameof(SectionTitle));
             OnPropertyChanged(nameof(IsLibrarySelected));
             OnPropertyChanged(nameof(IsSettingsSelected));
@@ -25,13 +32,13 @@ public sealed class ShellViewModel(ILogger<ShellViewModel> logger) : ObservableO
         }
     }
 
-    public AppTheme Theme
-    {
+    public AppTheme Theme {
         get => _theme;
-        set
-        {
-            if (!Enum.IsDefined(value)) throw new ArgumentOutOfRangeException(nameof(value));
-            if (SetProperty(ref _theme, value)) logger.LogInformation("Selected theme {Theme}.", value);
+        set {
+            if (!Enum.IsDefined(value))
+                throw new ArgumentOutOfRangeException(nameof(value));
+            if (SetProperty(ref _theme, value))
+                logger.LogInformation("Selected theme {Theme}.", value);
         }
     }
 
@@ -39,4 +46,3 @@ public sealed class ShellViewModel(ILogger<ShellViewModel> logger) : ObservableO
     public bool IsLibrarySelected => Section == ShellSection.Library;
     public bool IsSettingsSelected => Section == ShellSection.Settings;
 }
-

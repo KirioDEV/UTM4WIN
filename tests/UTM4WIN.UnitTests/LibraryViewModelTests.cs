@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 using UTM4WIN.App;
 using UTM4WIN.App.ViewModels;
 using UTM4WIN.Application;
@@ -8,11 +7,9 @@ using UTM4WIN.Domain;
 namespace UTM4WIN.UnitTests;
 
 [TestClass]
-public sealed class LibraryViewModelTests
-{
+public sealed class LibraryViewModelTests {
     [TestMethod]
-    public void EditorRejectsFractionalAndEmptyNumbersWithoutMutatingSnapshot()
-    {
+    public void EditorRejectsFractionalAndEmptyNumbersWithoutMutatingSnapshot() {
         var snapshot = new VmSnapshot(VmConfiguration.CreateMetadata("Original"), "revision");
         var editor = new MetadataEditorViewModel(snapshot) { Name = "Draft", CpuCount = 1.5 };
         Assert.IsNull(editor.Validate());
@@ -25,13 +22,10 @@ public sealed class LibraryViewModelTests
     }
 
     [TestMethod]
-    public async Task SavingConflictLeavesDraftAndMessageAvailableToDialog()
-    {
+    public async Task SavingConflictLeavesDraftAndMessageAvailableToDialog() {
         var snapshot = new VmSnapshot(VmConfiguration.CreateMetadata("Original"), "revision");
-        var dialogs = new TestDialogs
-        {
-            Edit = async (editor, save) =>
-            {
+        var dialogs = new TestDialogs {
+            Edit = async (editor, save) => {
                 editor.Name = "Unsaved edit";
                 Assert.IsFalse(await save(editor.Validate()!));
                 Assert.AreEqual("Unsaved edit", editor.Name);
@@ -48,8 +42,7 @@ public sealed class LibraryViewModelTests
     }
 
     [TestMethod]
-    public async Task BusyDialogPreventsOtherMutationsAndCanceledRemovalKeepsEntry()
-    {
+    public async Task BusyDialogPreventsOtherMutationsAndCanceledRemovalKeepsEntry() {
         var snapshot = new VmSnapshot(VmConfiguration.CreateMetadata("Original"), "revision");
         var entered = new TaskCompletionSource();
         var leave = new TaskCompletionSource();
@@ -72,16 +65,14 @@ public sealed class LibraryViewModelTests
     }
 
     [TestMethod]
-    public void LaunchArgumentsAreExplicitAndVmRowHasAccessibleName()
-    {
+    public void LaunchArgumentsAreExplicitAndVmRowHasAccessibleName() {
         Assert.IsNull(LaunchOptions.ParseLibraryRoot([]));
         Assert.AreEqual(@"C:\Library", LaunchOptions.ParseLibraryRoot(["--library-root", @"C:\Library"]));
         Assert.Throws<ArgumentException>(() => LaunchOptions.ParseLibraryRoot(["-extra-qemu-args", "anything"]));
         Assert.AreEqual("Debian", new VmListItem(new(VmConfiguration.CreateMetadata("Debian"), "revision")).ToString());
     }
 
-    private sealed class TestDialogs : ILibraryDialogs
-    {
+    private sealed class TestDialogs : ILibraryDialogs {
         public Task CreateAsync(CreationWizardViewModel wizard) => Task.CompletedTask;
         public Func<MetadataEditorViewModel, Func<VmConfiguration, Task<bool>>, Task> Edit { get; init; } = (_, _) => Task.CompletedTask;
         public Task EditAsync(MetadataEditorViewModel editor, bool isNew, Func<VmConfiguration, Task<bool>> save) => Edit(editor, save);
@@ -91,18 +82,21 @@ public sealed class LibraryViewModelTests
     private static LibraryViewModel CreateModel(IVmRepository repository, ILibraryDialogs dialogs) => new(repository, dialogs,
         NullLogger<LibraryViewModel>.Instance, new TestCreation(), new QemuToolSelection(), NullLogger<CreationWizardViewModel>.Instance);
 
-    private sealed class TestCreation : IVmCreationService
-    {
+    private sealed class TestCreation : IVmCreationService {
         public Task<VmSnapshot> CreateAsync(VmCreationRequest request, IProgress<string>? progress = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
-    private sealed class TestRepository(VmSnapshot snapshot) : IVmRepository
-    {
-        public int RemovalCount { get; private set; }
+    private sealed class TestRepository(VmSnapshot snapshot) : IVmRepository {
+        public int RemovalCount {
+            get; private set;
+        }
         public Task<VmLibrary> ListAsync(CancellationToken cancellationToken = default) => Task.FromResult(new VmLibrary([snapshot], [], []));
         public Task<VmSnapshot> CreateAsync(VmConfiguration configuration, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<VmSnapshot> SaveAsync(VmConfiguration configuration, string expectedRevision, CancellationToken cancellationToken = default) => throw new ConfigurationConflictException("Concurrent edit");
         public Task RegisterAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task RemoveAsync(Guid id, CancellationToken cancellationToken = default) { RemovalCount++; return Task.CompletedTask; }
+        public Task RemoveAsync(Guid id, CancellationToken cancellationToken = default) {
+            RemovalCount++;
+            return Task.CompletedTask;
+        }
     }
 }

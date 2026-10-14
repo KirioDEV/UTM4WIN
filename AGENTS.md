@@ -140,6 +140,7 @@ Follow modern Microsoft C# and .NET conventions.
 - Prefix private fields with an underscore.
 - Prefix interfaces with `I`.
 - Use four spaces for indentation.
+- Use K&R brace style in all application/test code and new code: place opening braces on the same line as the declaration or control statement, and keep `} else`, `} catch` and `} finally` on the same line. Follow the repository `.editorconfig`; never format `reference/` or generated build output.
 - Enable nullable reference types.
 - Prefer file-scoped namespaces.
 - Prefer async APIs for I/O-bound operations.
@@ -356,6 +357,8 @@ Do not create large amounts of redundant documentation.
 ## Commit and Pull Request Guidelines
 
 Use concise English descriptions when suggesting commit messages.
+
+Always end the final response for a completed repository-change task with a concise, single-line English commit message. Do not include milestone identifiers such as M0, M1 or M2 in that message. Suggest the message only; never stage or commit changes.
 
 The user manages Git manually.
 

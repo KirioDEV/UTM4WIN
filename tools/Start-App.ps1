@@ -4,9 +4,13 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $DotNetPath) {
     $riderSdk = Join-Path $env:LOCALAPPDATA 'Programs/Rider/lib/ReSharperHost/windows-x64/dotnet/dotnet.exe'
     $systemDotNet = Get-Command dotnet -ErrorAction SilentlyContinue
-    if (Test-Path -LiteralPath $riderSdk) { $DotNetPath = $riderSdk }
-    elseif ($systemDotNet) { $DotNetPath = $systemDotNet.Source }
-    else { throw 'Install the .NET SDK specified in global.json or pass -DotNetPath.' }
+    if (Test-Path -LiteralPath $riderSdk) {
+        $DotNetPath = $riderSdk
+    } elseif ($systemDotNet) {
+        $DotNetPath = $systemDotNet.Source
+    } else {
+        throw 'Install the .NET SDK specified in global.json or pass -DotNetPath.'
+    }
 }
 $DotNetPath = (Resolve-Path -LiteralPath $DotNetPath).Path
 if ([IO.Path]::GetFileName($DotNetPath) -ne 'dotnet.exe') { throw 'DotNetPath must point to dotnet.exe.' }
@@ -29,10 +33,10 @@ try {
     try {
         $appProcess.WaitForExit()
         if ($appProcess.ExitCode -ne 0) { throw "Application exited with code $($appProcess.ExitCode)." }
+    } finally {
+        $appProcess.Dispose()
     }
-    finally { $appProcess.Dispose() }
-}
-finally {
+} finally {
     Pop-Location
     foreach ($name in $previousEnvironment.Keys) {
         [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name], 'Process')

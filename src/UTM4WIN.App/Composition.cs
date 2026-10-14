@@ -7,10 +7,8 @@ using UTM4WIN.Virtualization.Qemu;
 
 namespace UTM4WIN.App;
 
-public static class Composition
-{
-    public static ServiceProvider CreateServices(string? libraryRoot = null)
-    {
+public static class Composition {
+    public static ServiceProvider CreateServices(string? libraryRoot = null) {
         var services = new ServiceCollection();
         services.AddLogging(builder => builder.AddDebug().SetMinimumLevel(LogLevel.Information));
         services.AddSingleton<ShellViewModel>();

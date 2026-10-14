@@ -1,4 +1,3 @@
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 using UTM4WIN.Application;
 using UTM4WIN.Domain;
 using UTM4WIN.Infrastructure;
@@ -6,38 +5,36 @@ using UTM4WIN.Infrastructure;
 namespace UTM4WIN.UnitTests;
 
 [TestClass]
-public sealed class CreationTests
-{
+public sealed class CreationTests {
     private string _scratch = null!;
     private string _root = null!;
     private string _iso = null!;
 
     [TestInitialize]
-    public async Task Initialize()
-    {
+    public async Task Initialize() {
         _scratch = Path.Combine(Path.GetTempPath(), "UTM4WIN-creation-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_scratch);
         _root = Path.Combine(_scratch, "library");
         _iso = Path.Combine(_scratch, "fixture.iso");
         byte[] image = new byte[17 * 2048];
         "CD001"u8.CopyTo(image.AsSpan(16 * 2048 + 1));
-        image[16 * 2048] = 1; image[16 * 2048 + 6] = 1;
+        image[16 * 2048] = 1;
+        image[16 * 2048 + 6] = 1;
         await File.WriteAllBytesAsync(_iso, image);
     }
 
     [TestCleanup]
-    public void Cleanup()
-    {
+    public void Cleanup() {
         if (Directory.Exists(_scratch) && Path.GetDirectoryName(_scratch) == Path.TrimEndingDirectorySeparator(Path.GetTempPath()) &&
-            Path.GetFileName(_scratch).StartsWith("UTM4WIN-creation-", StringComparison.Ordinal)) Directory.Delete(_scratch, recursive: true);
+            Path.GetFileName(_scratch).StartsWith("UTM4WIN-creation-", StringComparison.Ordinal))
+            Directory.Delete(_scratch, recursive: true);
     }
 
     private VmCreationRequest Request() => new(VmConfiguration.CreateMetadata("Linux"), 32, _iso, Path.Combine(_scratch, "qemu-img.exe"), true);
     private string DiskPath(Guid id) => Path.Combine(_root, id.ToString("D"), "disks", "system.qcow2");
 
     [TestMethod]
-    public async Task CreationRegistersExactlyOnceAndKeepsIsoUnchanged()
-    {
+    public async Task CreationRegistersExactlyOnceAndKeepsIsoUnchanged() {
         var request = Request();
         byte[] iso = await File.ReadAllBytesAsync(_iso);
         var repository = new JsonVmRepository(_root);
@@ -58,8 +55,7 @@ public sealed class CreationTests
     }
 
     [TestMethod]
-    public async Task CollisionPreservesExistingDirectoryAndDisk()
-    {
+    public async Task CollisionPreservesExistingDirectoryAndDisk() {
         var request = Request();
         string disk = DiskPath(request.Configuration.Id);
         Directory.CreateDirectory(Path.GetDirectoryName(disk)!);
@@ -71,8 +67,7 @@ public sealed class CreationTests
     }
 
     [TestMethod]
-    public async Task MissingInvalidAndInaccessibleIsoNeverReachDiskTool()
-    {
+    public async Task MissingInvalidAndInaccessibleIsoNeverReachDiskTool() {
         var request = Request();
         var disks = new FakeDisks();
         var service = new VmCreationService(new JsonVmRepository(_root), disks);
@@ -86,8 +81,7 @@ public sealed class CreationTests
     }
 
     [TestMethod]
-    public async Task DiskFullFailureRollsBackNewArtifactsAndPreservesOtherData()
-    {
+    public async Task DiskFullFailureRollsBackNewArtifactsAndPreservesOtherData() {
         var request = Request();
         var repository = new JsonVmRepository(_root);
         var existing = await repository.CreateAsync(VmConfiguration.CreateMetadata("Existing"));
@@ -100,8 +94,7 @@ public sealed class CreationTests
     }
 
     [TestMethod]
-    public async Task CancellationAfterDiskCreationRollsBackWithoutRegistration()
-    {
+    public async Task CancellationAfterDiskCreationRollsBackWithoutRegistration() {
         var request = Request();
         using var cancellation = new CancellationTokenSource();
         var repository = new JsonVmRepository(_root);
@@ -113,8 +106,7 @@ public sealed class CreationTests
     }
 
     [TestMethod]
-    public async Task MetadataWriteFailureDiscardsOnlyOperationDisk()
-    {
+    public async Task MetadataWriteFailureDiscardsOnlyOperationDisk() {
         var request = Request();
         var repository = new JsonVmRepository(_root, new AtomicFileWriter { BeforeCommit = _ => throw new IOException("Injected metadata interruption") });
         await Assert.ThrowsAsync<IOException>(() => new VmCreationService(repository, new FakeDisks()).CreateAsync(request));
@@ -124,11 +116,9 @@ public sealed class CreationTests
     }
 
     [TestMethod]
-    public async Task InterruptedRegistrationRetainsDiskAndConfigurationForRecovery()
-    {
+    public async Task InterruptedRegistrationRetainsDiskAndConfigurationForRecovery() {
         var request = Request();
-        var repository = new JsonVmRepository(_root, new AtomicFileWriter
-        {
+        var repository = new JsonVmRepository(_root, new AtomicFileWriter {
             BeforeCommit = path => { if (Path.GetFileName(path) == "library.json") throw new IOException("Injected index interruption"); }
         });
         var error = await Assert.ThrowsAsync<IOException>(() => new VmCreationService(repository, new FakeDisks()).CreateAsync(request));
@@ -143,8 +133,7 @@ public sealed class CreationTests
     }
 
     [TestMethod]
-    public async Task RollbackLeavesUnexpectedFilesForManualInspection()
-    {
+    public async Task RollbackLeavesUnexpectedFilesForManualInspection() {
         var request = Request();
         string directory = Path.Combine(_root, request.Configuration.Id.ToString("D"));
         var repository = new JsonVmRepository(_root, new AtomicFileWriter { BeforeCommit = _ => throw new IOException("Interrupted") });
@@ -155,12 +144,10 @@ public sealed class CreationTests
     }
 
     [TestMethod]
-    public async Task CancellationAfterMetadataCommitRetainsRecoverableDisk()
-    {
+    public async Task CancellationAfterMetadataCommitRetainsRecoverableDisk() {
         var request = Request();
         using var cancellation = new CancellationTokenSource();
-        var repository = new JsonVmRepository(_root, new AtomicFileWriter
-        {
+        var repository = new JsonVmRepository(_root, new AtomicFileWriter {
             BeforeCommit = path => { if (Path.GetFileName(path) == "library.json") cancellation.Cancel(); }
         });
         await Assert.ThrowsAsync<OperationCanceledException>(() => new VmCreationService(repository, new FakeDisks()).CreateAsync(request, cancellationToken: cancellation.Token));
@@ -172,8 +159,7 @@ public sealed class CreationTests
     }
 
     [TestMethod]
-    public async Task OccupiedLibraryPathPreservesExistingFileAndDoesNotCreateDisk()
-    {
+    public async Task OccupiedLibraryPathPreservesExistingFileAndDoesNotCreateDisk() {
         var request = Request();
         await File.WriteAllTextAsync(_root, "existing file sentinel");
         var disks = new FakeDisks();
@@ -183,40 +169,49 @@ public sealed class CreationTests
     }
 
     [TestMethod]
-    public void CreationRequiresExplicitCleanupConsentAndWholeBoundedCapacity()
-    {
+    public void CreationRequiresExplicitCleanupConsentAndWholeBoundedCapacity() {
         var request = Request();
         Assert.Throws<ConfigurationException>(() => VmCreationValidator.Validate(request with { DiscardIncompleteDisk = false }));
         Assert.Throws<ConfigurationException>(() => VmCreationValidator.Validate(request with { DiskSizeGiB = 0 }));
         Assert.Throws<ConfigurationException>(() => VmCreationValidator.Validate(request with { DiskSizeGiB = 2049 }));
     }
 
-    private sealed class FakeDisks : IDiskImageService
-    {
-        public int Calls { get; private set; }
-        public long RequestedSize { get; private set; }
-        public Exception? Failure { get; init; }
-        public Action? AfterCreation { get; init; }
-        public Task<ICreatedDisk> CreateAsync(string executable, string destination, long sizeBytes, CancellationToken cancellationToken = default)
-        {
-            Calls++; RequestedSize = sizeBytes;
+    private sealed class FakeDisks : IDiskImageService {
+        public int Calls {
+            get; private set;
+        }
+        public long RequestedSize {
+            get; private set;
+        }
+        public Exception? Failure {
+            get; init;
+        }
+        public Action? AfterCreation {
+            get; init;
+        }
+        public Task<ICreatedDisk> CreateAsync(string executable, string destination, long sizeBytes, CancellationToken cancellationToken = default) {
+            Calls++;
+            RequestedSize = sizeBytes;
             var guard = new FileStream(destination, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite);
-            try
-            {
+            try {
                 guard.Write("inert disk fixture"u8);
                 guard.Flush();
-                if (Failure is not null) throw Failure;
+                if (Failure is not null)
+                    throw Failure;
                 AfterCreation?.Invoke();
                 return Task.FromResult<ICreatedDisk>(new FakeDisk(destination, guard));
-            }
-            catch { guard.Dispose(); File.Delete(destination); throw; }
+            } catch { guard.Dispose(); File.Delete(destination); throw; }
         }
     }
 
-    private sealed class FakeDisk(string path, FileStream guard) : ICreatedDisk
-    {
+    private sealed class FakeDisk(string path, FileStream guard) : ICreatedDisk {
         private bool _retained;
         public void Retain() => _retained = true;
-        public ValueTask DisposeAsync() { guard.Dispose(); if (!_retained) File.Delete(path); return ValueTask.CompletedTask; }
+        public ValueTask DisposeAsync() {
+            guard.Dispose();
+            if (!_retained)
+                File.Delete(path);
+            return ValueTask.CompletedTask;
+        }
     }
 }
