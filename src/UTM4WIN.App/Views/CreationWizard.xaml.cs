@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Windows.Storage.Pickers;
 using UTM4WIN.App.ViewModels;
+using UTM4WIN.Domain;
 
 namespace UTM4WIN.App.Views;
 
@@ -20,6 +21,9 @@ public sealed partial class CreationWizard : UserControl {
     }
 
     public Visibility ToVisibility(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
+    private void OnVirtualize(object sender, RoutedEventArgs args) => ViewModel.SelectExecutionMode(ExecutionMode.Whpx);
+    private void OnEmulate(object sender, RoutedEventArgs args) => ViewModel.SelectExecutionMode(ExecutionMode.Tcg);
+    private void OnLinux(object sender, RoutedEventArgs args) => ViewModel.SelectLinux();
 
     private async void OnBrowseIso(object sender, RoutedEventArgs args) => await PickAsync(".iso", isIso: true);
     private async void OnBrowseTool(object sender, RoutedEventArgs args) => await PickAsync(".exe", isIso: false);

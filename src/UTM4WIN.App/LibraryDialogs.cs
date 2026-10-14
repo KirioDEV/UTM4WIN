@@ -22,23 +22,24 @@ public sealed class LibraryDialogs : ILibraryDialogs {
         var dialog = new ContentDialog {
             XamlRoot = XamlRoot ?? throw new InvalidOperationException("The window is not loaded."),
             RequestedTheme = Theme,
-            Title = "Create virtual machine",
+            Title = "Start",
             Content = new CreationWizard(wizard, WindowId),
-            PrimaryButtonText = "Next",
+            PrimaryButtonText = "",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary
         };
         bool discarded = false;
         bool discardOffered = false;
         void UpdateButtons() {
-            dialog.PrimaryButtonText = wizard.Step == 2 ? "Create VM" : "Next";
+            dialog.Title = wizard.StepTitle;
+            dialog.PrimaryButtonText = wizard.Step == 5 ? "Create VM" : wizard.Step < 2 ? "" : "Continue";
             dialog.SecondaryButtonText = discardOffered ? "Discard changes" : wizard.Step > 0 ? "Back" : "";
         }
         dialog.PrimaryButtonClick += async (_, args) => {
             var deferral = args.GetDeferral();
             try {
                 discardOffered = false;
-                if (wizard.Step < 2) {
+                if (wizard.Step < 5) {
                     wizard.Next();
                     args.Cancel = true;
                 } else
@@ -72,20 +73,33 @@ public sealed class LibraryDialogs : ILibraryDialogs {
                 UpdateButtons();
             }
         };
-        await dialog.ShowAsync();
+        void OnWizardChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args) {
+            if (args.PropertyName == nameof(CreationWizardViewModel.Step))
+                UpdateButtons();
+        }
+        wizard.PropertyChanged += OnWizardChanged;
+        try {
+            await dialog.ShowAsync();
+        } finally { wizard.PropertyChanged -= OnWizardChanged; }
     }
 
     public async Task EditAsync(MetadataEditorViewModel editor, bool isNew, Func<VmConfiguration, Task<bool>> save) {
+        var root = XamlRoot ?? throw new InvalidOperationException("The window is not loaded.");
+        var content = new MetadataEditor(editor);
+        void ResizeContent(XamlRoot sender, XamlRootChangedEventArgs args) =>
+            content.Width = Math.Clamp(sender.Size.Width - 128, 400, 680);
+        content.Width = Math.Clamp(root.Size.Width - 128, 400, 680);
         var dialog = new ContentDialog {
-            XamlRoot = XamlRoot ?? throw new InvalidOperationException("The window is not loaded."),
+            XamlRoot = root,
             RequestedTheme = Theme,
-            Title = isNew ? "Add VM metadata" : "Edit VM metadata",
-            Content = new MetadataEditor(editor),
+            Title = isNew ? "Add VM metadata" : "Virtual machine settings",
+            Content = content,
             PrimaryButtonText = "Save",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary
         };
         bool saved = false;
+        dialog.Resources["ContentDialogMaxWidth"] = 820d;
         bool discarded = false;
         bool saving = false;
         dialog.PrimaryButtonClick += async (_, args) => {
@@ -109,7 +123,10 @@ public sealed class LibraryDialogs : ILibraryDialogs {
                 dialog.SecondaryButtonText = "Discard changes";
             }
         };
-        await dialog.ShowAsync();
+        root.Changed += ResizeContent;
+        try {
+            await dialog.ShowAsync();
+        } finally { root.Changed -= ResizeContent; }
     }
 
     public async Task<bool> ConfirmRemoveAsync(string name) {

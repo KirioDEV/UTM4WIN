@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using UTM4WIN.App.ViewModels;
 using UTM4WIN.Application;
+using UTM4WIN.Domain;
 
 namespace UTM4WIN.UnitTests;
 
@@ -11,10 +12,14 @@ public sealed class CreationWizardTests {
         var service = new TestCreation();
         var wizard = Create(service);
         Assert.IsFalse(wizard.Next());
-        wizard.Name = "Linux";
-        Assert.IsTrue(wizard.Next());
+        Assert.IsTrue(wizard.SelectExecutionMode(ExecutionMode.Tcg));
+        Assert.IsTrue(wizard.SelectLinux());
         Assert.IsFalse(wizard.Next());
         wizard.IsoPath = @"C:\Media\debian.iso";
+        Assert.IsTrue(wizard.Next());
+        Assert.IsFalse(wizard.Next());
+        wizard.Name = "Linux";
+        Assert.IsTrue(wizard.Next());
         wizard.QemuImgPath = @"C:\Qemu\qemu-img.exe";
         wizard.DiskSizeGiB = 1.5;
         Assert.IsFalse(wizard.Next());
@@ -41,7 +46,7 @@ public sealed class CreationWizardTests {
         Assert.IsTrue(wizard.IsCreating);
         Assert.IsFalse(wizard.CanEdit);
         wizard.Back();
-        Assert.AreEqual(2, wizard.Step);
+        Assert.AreEqual(5, wizard.Step);
         wizard.CancelCreationCommand.Execute(null);
         Assert.IsFalse(await creation);
         Assert.IsFalse(wizard.IsCreating);
@@ -59,15 +64,18 @@ public sealed class CreationWizardTests {
         Assert.AreEqual(@"C:\Media\debian.iso", wizard.IsoPath);
         Assert.IsTrue(wizard.CanEdit);
         wizard.Back();
-        Assert.AreEqual(1, wizard.Step);
+        Assert.AreEqual(4, wizard.Step);
     }
 
     private static CreationWizardViewModel Create(TestCreation service) => new(service, new QemuToolSelection(), NullLogger<CreationWizardViewModel>.Instance);
     private static CreationWizardViewModel Ready(TestCreation service) {
         var wizard = Create(service);
+        wizard.SelectExecutionMode(ExecutionMode.Whpx);
+        wizard.SelectLinux();
+        wizard.IsoPath = @"C:\Media\debian.iso";
+        wizard.Next();
         wizard.Name = "Linux";
         wizard.Next();
-        wizard.IsoPath = @"C:\Media\debian.iso";
         wizard.QemuImgPath = @"C:\Qemu\qemu-img.exe";
         wizard.Next();
         wizard.DiscardIncompleteDisk = true;

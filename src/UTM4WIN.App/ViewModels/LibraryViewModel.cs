@@ -13,10 +13,18 @@ public interface ILibraryDialogs {
     Task<bool> ConfirmRemoveAsync(string name);
 }
 
-public sealed record VmListItem(VmSnapshot Snapshot) {
+public sealed record VmListItem(VmSnapshot Snapshot, string ResourceIssue = "") {
     public override string ToString() => Name;
     public string Name => Snapshot.Configuration.Name;
     public string Details => $"x86_64 · {Snapshot.Configuration.CpuCount} CPUs · {Snapshot.Configuration.MemoryMiB} MiB · {Snapshot.Configuration.ExecutionMode.ToString().ToUpperInvariant()}";
+    public string Subtitle => $"Standard PC · {ExecutionLabel}";
+    public string ExecutionLabel => Snapshot.Configuration.ExecutionMode == ExecutionMode.Whpx ? "Virtualization (WHPX)" : "Emulation (TCG)";
+    public string MemoryLabel => $"{Snapshot.Configuration.MemoryMiB:N0} MiB";
+    public string CpuLabel => $"{Snapshot.Configuration.CpuCount} virtual CPUs";
+    public string StatusLabel => ResourceIssue.Length != 0 ? "Needs attention" : Snapshot.Configuration.Storage.IsEmpty ? "Metadata only" : "Configured";
+    public string StorageLabel => Snapshot.Configuration.Storage.IsEmpty ? "No drives configured" : $"{Snapshot.Configuration.Storage.Length} drives";
+    public string NetworkLabel => Snapshot.Configuration.Network == NetworkMode.None ? "Disabled" : "User-mode networking";
+    public IReadOnlyList<StorageResource> Storage => Snapshot.Configuration.Storage;
 }
 
 public sealed partial class LibraryViewModel : ObservableObject {
@@ -89,7 +97,14 @@ public sealed partial class LibraryViewModel : ObservableObject {
         RegisterCommand = new AsyncRelayCommand(() => RunAsync(RegisterAsync), () => !IsBusy && SelectedRetainedId is not null);
     }
 
-    partial void OnSelectedMachineChanged(VmListItem? value) => NotifyCommands();
+    public bool HasSelectedMachine => SelectedMachine is not null;
+    public bool NoSelectedMachine => SelectedMachine is null;
+
+    partial void OnSelectedMachineChanged(VmListItem? value) {
+        OnPropertyChanged(nameof(HasSelectedMachine));
+        OnPropertyChanged(nameof(NoSelectedMachine));
+        NotifyCommands();
+    }
     partial void OnSelectedRetainedIdChanged(Guid? value) => NotifyCommands();
     partial void OnIsBusyChanged(bool value) => NotifyCommands();
 
@@ -120,8 +135,8 @@ public sealed partial class LibraryViewModel : ObservableObject {
         var library = await _repository.ListAsync();
         Machines.Clear();
         foreach (var snapshot in library.Machines)
-            Machines.Add(new(snapshot));
-        SelectedMachine = Machines.FirstOrDefault(machine => machine.Snapshot.Configuration.Id == selected);
+            Machines.Add(new(snapshot, string.Join(Environment.NewLine, library.Issues.Where(issue => issue.Id == snapshot.Configuration.Id).Select(issue => issue.Message))));
+        SelectedMachine = Machines.FirstOrDefault(machine => machine.Snapshot.Configuration.Id == selected) ?? Machines.FirstOrDefault();
         IsEmpty = Machines.Count == 0;
         RetainedIds.Clear();
         foreach (Guid id in library.UnregisteredIds)

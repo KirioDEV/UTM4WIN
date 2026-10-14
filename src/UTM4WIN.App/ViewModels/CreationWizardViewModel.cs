@@ -90,15 +90,18 @@ public sealed partial class CreationWizardViewModel : ObservableObject {
         private set {
             if (!SetProperty(ref _step, value))
                 return;
-            foreach (string property in new[] { nameof(IsGeneralStep), nameof(IsStorageStep), nameof(IsReviewStep), nameof(StepTitle), nameof(Summary) })
+            foreach (string property in new[] { nameof(IsModeStep), nameof(IsOperatingSystemStep), nameof(IsMediaStep), nameof(IsGeneralStep), nameof(IsStorageStep), nameof(IsReviewStep), nameof(StepTitle), nameof(Summary) })
                 OnPropertyChanged(property);
         }
     }
-    public bool IsGeneralStep => Step == 0;
-    public bool IsStorageStep => Step == 1;
-    public bool IsReviewStep => Step == 2;
+    public bool IsModeStep => Step == 0;
+    public bool IsOperatingSystemStep => Step == 1;
+    public bool IsMediaStep => Step == 2;
+    public bool IsGeneralStep => Step == 3;
+    public bool IsStorageStep => Step == 4;
+    public bool IsReviewStep => Step == 5;
     public bool CanEdit => !IsCreating;
-    public string StepTitle => Step switch { 0 => "1 · Profile and hardware", 1 => "2 · Installation media and disk", _ => "3 · Review and create" };
+    public string StepTitle => Step switch { 0 => "Start", 1 => "Operating System", 2 => "Linux", 3 => "Hardware", 4 => "Storage", _ => "Summary" };
     public string Summary => $"{Name}\nLinux x86_64 · BIOS\n{CpuCount} CPUs · {MemoryMiB} MiB · {((ExecutionMode)ExecutionModeIndex).ToString().ToUpperInvariant()}\n{DiskSizeGiB} GiB sparse qcow2 disk\nISO: {IsoPath}\nThe ISO stays at its current location and is read-only. The disk grows as the guest writes data; sufficient free space is still required for future use.";
     public bool HasChanges => Name != "" || CpuCount != 2 || MemoryMiB != 2048 || ExecutionModeIndex != 0 || DiskSizeGiB != 32 ||
         IsoPath != "" || QemuImgPath != _originalToolPath || DiscardIncompleteDisk;
@@ -108,11 +111,32 @@ public sealed partial class CreationWizardViewModel : ObservableObject {
         CancelCreationCommand?.NotifyCanExecuteChanged();
     }
 
-    public bool Next() {
-        if (IsCreating || Step >= 2)
+    public bool SelectExecutionMode(ExecutionMode mode) {
+        if (IsCreating || Step != 0 || !Enum.IsDefined(mode))
+            return false;
+        ExecutionModeIndex = (int)mode;
+        Error = "";
+        Step = 1;
+        return true;
+    }
+
+    public bool SelectLinux() {
+        if (IsCreating || Step != 1)
             return false;
         Error = "";
-        if (GetConfiguration() is null || Step == 1 && GetRequest(requireConsent: false) is null)
+        Step = 2;
+        return true;
+    }
+
+    public bool Next() {
+        if (IsCreating || Step < 2 || Step >= 5)
+            return false;
+        Error = "";
+        if (Step == 2 && (!ConfigurationValidator.IsExternalPath(IsoPath) || !IsoPath.EndsWith(".iso", StringComparison.OrdinalIgnoreCase))) {
+            Error = "Choose an absolute local Linux installation ISO path.";
+            return false;
+        }
+        if (Step == 3 && GetConfiguration() is null || Step == 4 && GetRequest(requireConsent: false) is null)
             return false;
         Step++;
         return true;
@@ -126,7 +150,7 @@ public sealed partial class CreationWizardViewModel : ObservableObject {
     }
 
     public async Task<bool> CreateAsync() {
-        if (IsCreating || CreatedMachine is not null || Step != 2)
+        if (IsCreating || CreatedMachine is not null || Step != 5)
             return false;
         Error = "";
         var request = GetRequest(requireConsent: true);

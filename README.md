@@ -42,15 +42,21 @@ Clean-machine installation and packaging remain M8 work.
 - src/UTM4WIN.App: WinUI views, Toolkit MVVM state and DI composition.
 - tests/UTM4WIN.UnitTests: Windows unit tests and separately categorized QEMU integration tests.
 
-The app implements library/settings navigation, metadata editing, a creation wizard and
-System/Light/Dark appearance for the current session. It explicitly declares
+The app follows UTM's sidebar and selected-VM detail composition, with grouped VM settings,
+a guided creation wizard and System/Light/Dark appearance for the current session.
+Narrow windows use an overlay sidebar, opened by the toolbar button. The preview is an
+explicit placeholder and its Run action is disabled until VM execution is implemented.
+It explicitly declares
 PerMonitorV2; actual higher/mixed-DPI guest input remains a mandatory M5 gate.
 Structured ILogger output currently goes to the debugger; persistent bounded logs are later work.
 
 ## Metadata library
 
-Use **Add metadata** to save a name, CPU count, memory and explicit WHPX/TCG selection.
-Select an entry to edit it. These entries describe the x86_64 Linux BIOS profile; they do
+Open the toolbar's **Library actions** menu and choose **Add metadata** to save a name,
+CPU count, memory and explicit WHPX/TCG selection. Select a sidebar entry to inspect it;
+use the **VM settings** toolbar button to edit **Information** and **System**.
+**Drives**, **Network** and **Display** currently show read-only information.
+These entries describe the x86_64 Linux BIOS profile; they do
 not contain a bootable guest yet. WHPX selection does not enable Windows features or assert
 host availability. Machine alias `pc` is metadata only; a qualified versioned machine and
 runtime resource checks must be established before launching in M4.
@@ -60,7 +66,7 @@ Default storage is `%LOCALAPPDATA%/UTM4WIN/Library`: `library.json` contains reg
 `--library-root <absolute local directory>` for a separate library. Remote/device paths
 and paths through junctions/symlinks/reparse points are unsupported.
 
-**Remove entry** asks for confirmation and removes only registration. Configuration,
+**Remove entry** in **Library actions** asks for confirmation and removes only registration. Configuration,
 disks and external resources remain intact. Retained UUID directories are listed separately;
 **Register retained metadata** validates and re-registers an existing configuration.
 Incomplete creation is retained for recovery; it is never silently registered or deleted.
@@ -88,7 +94,9 @@ hostile local path replacement or hard-link aliases. Metadata operations never d
 
 ## Create a VM
 
-Use **Create VM** and complete profile/hardware, installation media/storage and review.
+Use the sidebar's **Create VM** plus button or the empty-library create action.
+The six steps are execution mode (**Virtualize** or **Emulate**), operating system,
+installation ISO, hardware, storage/tool and summary. **Back** preserves entered values.
 The initial profile is Linux x86_64 with BIOS. Select a local Linux installation ISO and
 `qemu-img.exe` from the qualified QEMU 11.1.0 build. Native file pickers or direct paths
 are supported. No QEMU executable is bundled or downloaded by the application.

@@ -6,6 +6,22 @@ namespace UTM4WIN.App.ViewModels;
 
 public sealed partial class MetadataEditorViewModel : ObservableObject {
     private readonly VmDraft _draft;
+    [ObservableProperty]
+    public partial int SectionIndex {
+        get; set;
+    }
+    public bool IsInfoSection => SectionIndex == 0;
+    public bool IsSystemSection => SectionIndex == 1;
+    public bool IsDrivesSection => SectionIndex == 2;
+    public bool IsNetworkSection => SectionIndex == 3;
+    public bool IsDisplaySection => SectionIndex == 4;
+    public VmConfiguration OriginalConfiguration => _draft.Configuration;
+    public string NetworkLabel => OriginalConfiguration.Network == NetworkMode.None ? "Disabled" : "User-mode networking";
+    public string DriveSummary => OriginalConfiguration.Storage.IsEmpty ? "No drives configured. Use Create VM to prepare installation media and a disk." : "Managed disks stay in the VM directory. External installation media is read-only.";
+    partial void OnSectionIndexChanged(int value) {
+        foreach (string property in new[] { nameof(IsInfoSection), nameof(IsSystemSection), nameof(IsDrivesSection), nameof(IsNetworkSection), nameof(IsDisplaySection) })
+            OnPropertyChanged(property);
+    }
 
     [ObservableProperty]
     public partial string Name {

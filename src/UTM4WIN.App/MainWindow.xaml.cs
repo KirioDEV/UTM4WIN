@@ -20,7 +20,6 @@ public sealed partial class MainWindow : Window {
         Library = library;
         InitializeComponent();
         AppWindow.Resize(new SizeInt32(1100, 760));
-        Navigation.SelectedItem = LibraryItem;
         Root.Loaded += async (_, _) => {
             ApplyTitleBarTheme();
             dialogs.XamlRoot = Root.XamlRoot;
@@ -41,8 +40,30 @@ public sealed partial class MainWindow : Window {
             ? TitleBarTheme.Dark
             : TitleBarTheme.Light;
 
-    private void OnNavigationChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args) =>
-        ViewModel.Section = args.IsSettingsSelected ? ShellSection.Settings : ShellSection.Library;
+    private void OnRootSizeChanged(object sender, SizeChangedEventArgs args) {
+        bool wide = args.NewSize.Width >= 820;
+        LibrarySplit.DisplayMode = wide ? SplitViewDisplayMode.Inline : SplitViewDisplayMode.Overlay;
+        LibrarySplit.IsPaneOpen = wide;
+    }
+
+    private void OnSidebarToggle(object sender, RoutedEventArgs args) => LibrarySplit.IsPaneOpen = !LibrarySplit.IsPaneOpen;
+    private void OnLibraryClicked(object sender, RoutedEventArgs args) {
+        ViewModel.Section = ShellSection.Library;
+        if (LibrarySplit.DisplayMode == SplitViewDisplayMode.Overlay)
+            LibrarySplit.IsPaneOpen = false;
+    }
+    private void OnSettingsClicked(object sender, RoutedEventArgs args) {
+        ViewModel.Section = ShellSection.Settings;
+        if (LibrarySplit.DisplayMode == SplitViewDisplayMode.Overlay)
+            LibrarySplit.IsPaneOpen = false;
+    }
+    private void OnMachineSelectionChanged(object sender, SelectionChangedEventArgs args) {
+        ViewModel.Section = ShellSection.Library;
+        if (LibrarySplit.DisplayMode == SplitViewDisplayMode.Overlay)
+            LibrarySplit.IsPaneOpen = false;
+    }
+
+    private void OnPreviewSizeChanged(object sender, SizeChangedEventArgs args) => Preview.Height = Math.Clamp(args.NewSize.Width * 9 / 16, 190, 420);
 
     private void OnThemeChanged(object sender, SelectionChangedEventArgs args) {
         if (sender is ComboBox { SelectedIndex: >= 0 } picker)
