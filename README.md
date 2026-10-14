@@ -4,8 +4,9 @@ Native Windows 11 virtual machine manager, built with C#/.NET 10 and WinUI 3.
 M0 feasibility is accepted; M1 provides the native application foundation.
 M2 adds a persistent VM metadata library and editor; M3 adds a creation wizard with
 read-only installation media and a managed qcow2 disk. M4 adds owned QEMU sessions,
-pause/resume and shutdown controls with an interim external guest window.
-The integrated Linux workflow remains later work in [PLAN.md](PLAN.md).
+pause/resume and shutdown controls. The first M5 increment adds an integrated native
+guest console; networking and the complete Linux installation workflow remain
+in progress in [PLAN.md](PLAN.md).
 
 ## Development
 
@@ -148,10 +149,21 @@ Networking remains disabled. The current Windows system binary cannot open non-A
 resource paths: library, ISO and QEMU installation paths must be ASCII-only. Creation's
 broader path support does not imply runtime compatibility; files are never relocated automatically.
 
-QEMU's SDL window provides the interim display/input. The app does not embed this window
-or expose a VNC/QMP network listener. WinUI's preview remains a placeholder. Closing the
-QEMU window ends that process and is reported as an unexpected exit; use the app's controls
-for deliberate shutdown. Running means QEMU confirms running virtual CPUs, not a fully booted OS.
+The app opens a native WinUI guest console using a session-only loopback VNC endpoint
+with mutually authenticated TLS and a pinned server certificate. QMP remains isolated
+stdio. No certificate is installed in the Windows trust store. The console supports
+bounded Raw/ZLib frames up to 2048 × 2048, basic keyboard input and an absolute USB tablet.
+Click the guest to focus input; Ctrl+Alt+Escape or **Release input** releases held input.
+**Reconnect display** reconnects the console without restarting the VM. Closing the
+console keeps the VM running; **Open console** opens it again. The library preview remains
+a placeholder. Running means QEMU confirms running virtual CPUs, not a fully booted OS.
+
+Keyboard layouts, dead keys, IME, mouse wheel and all host shortcuts are not yet qualified.
+Clipboard and automatic reconnection are disabled. Normal teardown removes the private
+temporary certificate files; an abrupt app crash can leave their user-only protected
+directory behind. Certificates expire after seven days; renewal is not implemented.
+The user verified keyboard/mouse input, focus release and monitor movement on the
+qualified host at 100% and 125% scaling; other scale/layout combinations remain unqualified.
 
 **Pause** and **Resume** reconcile actual QMP status. **Shut down** requests guest cooperation,
 resuming a paused guest first. The process and resource locks remain owned until guest shutdown
@@ -193,7 +205,10 @@ and Microsoft.NET.Test.Sdk 18.0.1. NuGet metadata was checked for MIT licenses a
 .NET targets before restoration. The Toolkit and test framework use compatible .NET 8 targets;
 restore, compilation and runtime tests verify the selected .NET 10 combination.
 The Windows App SDK dependency/license graph was qualified in M0.
-QEMU/VNC packages, executables, ISO files and reference source are not part of the application.
+The console adds the MIT-licensed Community.MarcusW.VncClient 2.0.8 and
+BouncyCastle.Cryptography 2.7.0 packages. These were already cached and qualified during
+feasibility work; the application uses its own bounded protocol/security adapters.
+QEMU executables, ISO files and reference source are not part of the application.
 
 reference/ remains read-only analysis material. Git staging/commits are managed by the user.
 

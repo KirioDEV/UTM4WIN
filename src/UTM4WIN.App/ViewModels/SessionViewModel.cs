@@ -14,6 +14,12 @@ public sealed partial class SessionViewModel : ObservableObject {
     private CancellationTokenSource? _startup;
     private string _actionError = "";
     public Action<Action> Dispatch { get; set; } = callback => callback();
+    public Action<VmSnapshot, IVmDisplaySession>? ShowConsole {
+        get; set;
+    }
+    public IRelayCommand OpenConsoleCommand {
+        get;
+    }
     [ObservableProperty]
     public partial string StatusLabel {
         get; set;
@@ -56,6 +62,7 @@ public sealed partial class SessionViewModel : ObservableObject {
         _tools = tools;
         _logger = logger;
         StatusLabel = "No VM selected";
+        OpenConsoleCommand = new RelayCommand(OpenConsole, () => !library.IsBusy && sessions.GetDisplay(Current.Id) is not null);
         Error = "";
         StartCommand = new AsyncRelayCommand(() => RunAsync(StartAsync), () => !library.IsBusy && library.SelectedMachine is { } machine && machine.Storage.Count > 0 && !sessions.Get(machine.Snapshot.Configuration.Id).OwnsResources);
         PauseCommand = new AsyncRelayCommand(() => RunAsync(() => ControlAsync(VmControl.Pause)), () => CanControl(VmSessionState.Running));
@@ -88,6 +95,7 @@ public sealed partial class SessionViewModel : ObservableObject {
         ForceStopCommand.NotifyCanExecuteChanged();
         CancelStartCommand.NotifyCanExecuteChanged();
         DiagnosticsCommand.NotifyCanExecuteChanged();
+        OpenConsoleCommand.NotifyCanExecuteChanged();
         _library.RefreshSessionCommands();
     }
 
@@ -118,7 +126,14 @@ public sealed partial class SessionViewModel : ObservableObject {
         Refresh();
         try {
             await _sessions.StartAsync(machine.Snapshot, options, _startup.Token);
+            if (_sessions.GetDisplay(machine.Snapshot.Configuration.Id) is { } display)
+                ShowConsole?.Invoke(machine.Snapshot, display);
         } finally { _startup.Dispose(); _startup = null; }
+    }
+
+    private void OpenConsole() {
+        if (_library.SelectedMachine is { } machine && _sessions.GetDisplay(machine.Snapshot.Configuration.Id) is { } display)
+            ShowConsole?.Invoke(machine.Snapshot, display);
     }
 
     private async Task ControlAsync(VmControl control) {

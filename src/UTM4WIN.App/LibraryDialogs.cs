@@ -34,7 +34,7 @@ public sealed class LibraryDialogs : ILibraryDialogs {
         AutomationProperties.SetName(path, "QEMU system executable path");
         var boot = new CheckBox { Content = "Boot the configured installation ISO once", IsChecked = true };
         var content = new StackPanel { Spacing = 16 };
-        content.Children.Add(new TextBlock { Text = "The guest opens in a separate QEMU window. Integrated display and networking are not available yet. The current QEMU build requires ASCII-only library, ISO and tool paths.", TextWrapping = TextWrapping.Wrap, MaxWidth = 460 });
+        content.Children.Add(new TextBlock { Text = "The guest opens in UTM4WIN's console. The current QEMU build requires ASCII-only library, ISO and tool paths.", TextWrapping = TextWrapping.Wrap, MaxWidth = 460 });
         content.Children.Add(path);
         content.Children.Add(boot);
         var dialog = new ContentDialog {
@@ -46,7 +46,7 @@ public sealed class LibraryDialogs : ILibraryDialogs {
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close
         };
-        return await dialog.ShowAsync() == ContentDialogResult.Primary ? new(path.Text.Trim(), true, boot.IsChecked == true) : null;
+        return await dialog.ShowAsync() == ContentDialogResult.Primary ? new(path.Text.Trim(), false, boot.IsChecked == true, true) : null;
     }
 
     public async Task<bool> ConfirmForceStopAsync(string name) {

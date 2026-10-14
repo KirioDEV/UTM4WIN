@@ -8,7 +8,7 @@ public enum VmSessionState {
 public enum VmControl {
     Pause, Resume, Shutdown, Quit
 }
-public sealed record VmStartOptions(string Executable, bool ExternalDisplay = true, bool BootInstallationMedia = true);
+public sealed record VmStartOptions(string Executable, bool ExternalDisplay = true, bool BootInstallationMedia = true, bool IntegratedDisplay = false);
 public sealed record VmSessionStatus(Guid Id, VmSessionState State, bool OwnsResources, string Error = "", uint? ProcessId = null);
 public sealed record ExecutionResource(StorageResource Configuration, string FullPath);
 
@@ -34,6 +34,7 @@ public interface IVmBackend {
 }
 
 public interface IVmBackendSession : IAsyncDisposable {
+    IVmDisplaySession? Display => null;
     uint ProcessId {
         get;
     }

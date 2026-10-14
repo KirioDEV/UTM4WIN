@@ -4,6 +4,8 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using UTM4WIN.App.ViewModels;
+using UTM4WIN.App.Views;
+using UTM4WIN.Application;
 
 namespace UTM4WIN.App;
 
@@ -19,6 +21,7 @@ public sealed partial class MainWindow : Window {
     }
     private bool _closePending;
     private bool _allowClose;
+    private readonly Dictionary<Guid, ConsoleWindow> _consoles = [];
 
     public MainWindow(ShellViewModel viewModel, LibraryViewModel library, LibraryDialogs dialogs, SessionViewModel session) {
         ViewModel = viewModel;
@@ -26,6 +29,22 @@ public sealed partial class MainWindow : Window {
         Session = session;
         InitializeComponent();
         Session.Dispatch = callback => DispatcherQueue.TryEnqueue(() => callback());
+        Session.ShowConsole = (snapshot, display) => {
+            if (_consoles.TryGetValue(snapshot.Configuration.Id, out var previous) && !ReferenceEquals(previous.Display, display)) {
+                _consoles.Remove(snapshot.Configuration.Id);
+                previous.Close();
+            }
+            if (!_consoles.TryGetValue(snapshot.Configuration.Id, out var console)) {
+                console = new(snapshot.Configuration.Name, display, Root.ActualTheme);
+                _consoles.Add(snapshot.Configuration.Id, console);
+                var created = console;
+                console.Closed += (_, _) => {
+                    if (_consoles.TryGetValue(snapshot.Configuration.Id, out var current) && ReferenceEquals(current, created))
+                        _consoles.Remove(snapshot.Configuration.Id);
+                };
+            }
+            console.Activate();
+        };
         AppWindow.Resize(new SizeInt32(1100, 760));
         Root.Loaded += async (_, _) => {
             ApplyTitleBarTheme();
@@ -36,16 +55,20 @@ public sealed partial class MainWindow : Window {
         };
         Root.ActualThemeChanged += (_, _) => { ApplyTitleBarTheme(); dialogs.Theme = Root.ActualTheme; };
         ViewModel.PropertyChanged += OnViewModelChanged;
-        Closed += (_, _) => ViewModel.PropertyChanged -= OnViewModelChanged;
+        Closed += (_, _) => {
+            ViewModel.PropertyChanged -= OnViewModelChanged;
+        };
         AppWindow.Closing += async (_, args) => {
             if (_allowClose)
                 return;
-            args.Cancel = Library.IsBusy || _closePending || Session.HasActiveSessions;
-            if (!args.Cancel || Library.IsBusy || _closePending)
+            args.Cancel = true;
+            if (Library.IsBusy || _closePending)
                 return;
             _closePending = true;
             try {
-                if (await Session.PrepareCloseAsync()) {
+                if (!Session.HasActiveSessions || await Session.PrepareCloseAsync()) {
+                    foreach (var console in _consoles.Values.ToArray())
+                        await console.CloseConsoleAsync();
                     _allowClose = true;
                     Close();
                 }

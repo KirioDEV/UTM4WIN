@@ -19,6 +19,7 @@ public sealed class VmSessionService(IVmExecutionLeaseProvider leases, IVmBacken
     public IReadOnlyList<VmSessionStatus> Sessions => _entries.Values.Select(entry => Volatile.Read(ref entry.Status)).ToArray();
     public VmSessionStatus Get(Guid id) => _entries.TryGetValue(id, out var entry) ? Volatile.Read(ref entry.Status) : new(id, VmSessionState.Stopped, false);
     public string GetDiagnostics(Guid id) => _entries.TryGetValue(id, out var entry) ? entry.Backend?.Diagnostics ?? entry.LastDiagnostics : "";
+    public IVmDisplaySession? GetDisplay(Guid id) => _entries.TryGetValue(id, out var entry) ? entry.Backend?.Display : null;
 
     private void Publish(Entry entry, VmSessionState state, string error = "") {
         var status = new VmSessionStatus(entry.Status.Id, state, entry.Lease is not null, error, entry.Backend?.ProcessId);

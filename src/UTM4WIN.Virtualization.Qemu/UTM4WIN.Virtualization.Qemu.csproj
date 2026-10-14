@@ -3,6 +3,9 @@
         <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     </PropertyGroup>
     <ItemGroup>
+        <PackageReference Include="Community.MarcusW.VncClient" />
+        <PackageReference Include="BouncyCastle.Cryptography" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
         <ProjectReference Include="../UTM4WIN.Application/UTM4WIN.Application.csproj" />
     </ItemGroup>
 </Project>

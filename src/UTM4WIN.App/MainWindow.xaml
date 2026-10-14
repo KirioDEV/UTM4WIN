@@ -71,6 +71,7 @@
                                     <MenuFlyoutItem Text="Remove entry" Command="{x:Bind Library.RemoveCommand}" />
                                     <MenuFlyoutSeparator />
                                     <MenuFlyoutItem Text="QEMU diagnostics" Command="{x:Bind Session.DiagnosticsCommand}" />
+                                    <MenuFlyoutItem Text="Open console" Command="{x:Bind Session.OpenConsoleCommand}" />
                                 </MenuFlyout>
                             </Button.Flyout>
                         </Button>
@@ -86,11 +87,11 @@
                         <StackPanel>
                             <Border x:Name="Preview" Background="{ThemeResource LayerFillColorAltBrush}" SizeChanged="OnPreviewSizeChanged" MinHeight="190" MaxHeight="420">
                                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12" Padding="24">
-                                    <Button Command="{x:Bind Session.StartCommand}" AutomationProperties.Name="Run VM" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="Start in an external QEMU window">
+                                    <Button Command="{x:Bind Session.StartCommand}" AutomationProperties.Name="Run VM" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="Start virtual machine">
                                         <FontIcon Glyph="" FontSize="64" />
                                     </Button>
                                     <TextBlock Text="No saved display" Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
-                                    <TextBlock Text="Guest display opens in a separate QEMU window." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" />
+                                    <Button Content="Open console" Command="{x:Bind Session.OpenConsoleCommand}" HorizontalAlignment="Center" />
                                     <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
                                         <Button Content="Pause" Command="{x:Bind Session.PauseCommand}" />
                                         <Button Content="Resume" Command="{x:Bind Session.ResumeCommand}" />

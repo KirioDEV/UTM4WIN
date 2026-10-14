@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using UTM4WIN.Application;
 using UTM4WIN.Domain;
+using UTM4WIN.Virtualization.Qemu.Display;
 
 namespace UTM4WIN.Virtualization.Qemu;
 
@@ -24,6 +25,7 @@ public sealed class QemuBackend : IVmBackend {
         var guards = new List<FileStream>();
         Session? session = null;
         OwnedToolProcess? child = null;
+        DisplayMaterial? displayMaterial = null;
         try {
             string executable = options.Executable;
             HostCapabilities.Check(lease.Snapshot.Configuration);
@@ -52,8 +54,15 @@ public sealed class QemuBackend : IVmBackend {
                 QemuImgDiskService.ValidateInfo(json, size);
             }
             cancellationToken.ThrowIfCancellationRequested();
-            child = OwnedToolProcess.Start(executable, BuildArguments(lease, options), Path.GetDirectoryName(executable)!);
-            session = new Session(child, guards);
+            var arguments = BuildArguments(lease, options).ToList();
+            if (options.IntegratedDisplay) {
+                displayMaterial = new();
+                arguments.AddRange(["-device", "qemu-xhci,id=consoleusb", "-device", "usb-tablet,bus=consoleusb.0",
+                    "-object", "tls-creds-x509,id=consoleTLS,endpoint=server,verify-peer=on,dir=" + displayMaterial.Directory.Replace('\\', '/').Replace(",", ",,", StringComparison.Ordinal),
+                    "-vnc", "127.0.0.1:" + (displayMaterial.Port - 5900) + ",tls-creds=consoleTLS,share=ignore"]);
+            }
+            child = OwnedToolProcess.Start(executable, arguments, Path.GetDirectoryName(executable)!);
+            session = new Session(child, guards, displayMaterial);
             using var cancel = cancellationToken.Register(child.CloseJob);
             _beforeResume?.Invoke(child.ProcessId);
             cancellationToken.ThrowIfCancellationRequested();
@@ -67,8 +76,10 @@ public sealed class QemuBackend : IVmBackend {
                 if (session is not null) {
                     await session.ForceStopAsync(CancellationToken.None);
                     await session.DisposeAsync();
-                } else
+                } else {
                     child?.Dispose();
+                    displayMaterial?.Dispose();
+                }
             } catch (Exception cleanup) { throw new VmCleanupException("Startup failed and child exit was not confirmed: " + cleanup.Message); }
             foreach (var guard in guards)
                 guard.Dispose();
@@ -84,6 +95,8 @@ public sealed class QemuBackend : IVmBackend {
     }
 
     internal static string[] BuildArguments(IVmExecutionLease lease, VmStartOptions options) {
+        if (options.IntegratedDisplay && options.ExternalDisplay)
+            throw new ConfigurationException("Choose either the integrated console or an external display.");
         var configuration = lease.Snapshot.Configuration;
         var disk = lease.Resources.Single(resource => resource.Configuration.Format == DiskFormat.Qcow2);
         string BlockDevice(string node, string path, string format, bool readOnly) => JsonSerializer.Serialize(new Dictionary<string, object> {
@@ -116,6 +129,9 @@ public sealed class QemuBackend : IVmBackend {
         private readonly Task _diagnostics;
         private readonly StringBuilder _tail = new();
         private bool _disposed;
+        private readonly DisplayMaterial? _displayMaterial;
+        private readonly VncDisplaySession? _display;
+        public IVmDisplaySession? Display => _display;
         public uint ProcessId => _child.ProcessId;
         public Task<uint> Completion {
             get;
@@ -127,9 +143,12 @@ public sealed class QemuBackend : IVmBackend {
             }
         }
 
-        public Session(OwnedToolProcess child, List<FileStream> guards) {
+        public Session(OwnedToolProcess child, List<FileStream> guards, DisplayMaterial? displayMaterial) {
             _child = child;
             _guards = guards;
+            _displayMaterial = displayMaterial;
+            if (displayMaterial is not null)
+                _display = new(displayMaterial);
             _qmp = new(child.Output, child.Input);
             _diagnostics = Task.Run(async () => {
                 char[] buffer = new char[2048];
@@ -161,6 +180,8 @@ public sealed class QemuBackend : IVmBackend {
                     throw new IOException("QEMU lacks required command " + command);
             beforeContinue?.Invoke(ProcessId);
             cancellationToken.ThrowIfCancellationRequested();
+            if (_display is not null)
+                await _display.ReconnectAsync(cancellationToken);
             await _qmp.ExecuteAsync("cont", cancellationToken);
         }
 
@@ -171,7 +192,13 @@ public sealed class QemuBackend : IVmBackend {
             } catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException) { throw new IOException("QEMU returned an invalid state response.", error); }
         }
 
-        public async Task ExecuteAsync(VmControl control, CancellationToken cancellationToken) =>
+        public async Task ExecuteAsync(VmControl control, CancellationToken cancellationToken) {
+            if (control == VmControl.Quit && _display is not null) {
+                await _display.EndAsync();
+                var vnc = await _qmp.ExecuteAsync("query-vnc", cancellationToken);
+                if (vnc.TryGetProperty("clients", out var clients) && clients.GetArrayLength() != 0)
+                    throw new IOException("Display clients remain connected; QEMU still owns its resources.");
+            }
             _ = await _qmp.ExecuteAsync(control switch {
                 VmControl.Pause => "stop",
                 VmControl.Resume => "cont",
@@ -179,8 +206,14 @@ public sealed class QemuBackend : IVmBackend {
                 VmControl.Quit => "quit",
                 _ => throw new ArgumentOutOfRangeException(nameof(control))
             }, cancellationToken);
+        }
 
         public async Task ForceStopAsync(CancellationToken cancellationToken) {
+            if (_display is not null) {
+                try {
+                    await _display.EndAsync();
+                } catch { /* Explicit force stop still terminates the owned process. */ }
+            }
             _child.CloseJob();
             try {
                 await Completion.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
@@ -195,6 +228,9 @@ public sealed class QemuBackend : IVmBackend {
             await Completion;
             await Task.WhenAll(_qmp.ReaderCompletion, _diagnostics).WaitAsync(TimeSpan.FromSeconds(5));
             _child.Dispose();
+            if (_display is not null)
+                await _display.EndAsync();
+            _displayMaterial?.Dispose();
             foreach (var guard in _guards)
                 guard.Dispose();
             _guards.Clear();
