@@ -21,9 +21,11 @@ public sealed partial class MainWindow : Window
         {
             ApplyTitleBarTheme();
             dialogs.XamlRoot = Root.XamlRoot;
+            dialogs.WindowId = AppWindow.Id;
+            dialogs.Theme = Root.ActualTheme;
             await Library.ReloadCommand.ExecuteAsync(null);
         };
-        Root.ActualThemeChanged += (_, _) => ApplyTitleBarTheme();
+        Root.ActualThemeChanged += (_, _) => { ApplyTitleBarTheme(); dialogs.Theme = Root.ActualTheme; };
         ViewModel.PropertyChanged += OnViewModelChanged;
         Closed += (_, _) => ViewModel.PropertyChanged -= OnViewModelChanged;
         AppWindow.Closing += (_, args) => args.Cancel = Library.IsBusy;

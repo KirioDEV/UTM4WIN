@@ -9,6 +9,7 @@ namespace UTM4WIN.App.ViewModels;
 
 public interface ILibraryDialogs
 {
+    Task CreateAsync(CreationWizardViewModel wizard);
     Task EditAsync(MetadataEditorViewModel editor, bool isNew, Func<VmConfiguration, Task<bool>> save);
     Task<bool> ConfirmRemoveAsync(string name);
 }
@@ -25,6 +26,9 @@ public sealed partial class LibraryViewModel : ObservableObject
     private readonly IVmRepository _repository;
     private readonly ILibraryDialogs _dialogs;
     private readonly ILogger<LibraryViewModel> _logger;
+    private readonly IVmCreationService _creation;
+    private readonly QemuToolSelection _tools;
+    private readonly ILogger<CreationWizardViewModel> _creationLogger;
     [ObservableProperty] public partial VmListItem? SelectedMachine { get; set; }
     [ObservableProperty] public partial Guid? SelectedRetainedId { get; set; }
     [ObservableProperty] public partial string Error { get; set; }
@@ -34,19 +38,23 @@ public sealed partial class LibraryViewModel : ObservableObject
     public ObservableCollection<VmListItem> Machines { get; } = [];
     public ObservableCollection<Guid> RetainedIds { get; } = [];
     public IAsyncRelayCommand ReloadCommand { get; }
+    public IAsyncRelayCommand CreateCommand { get; }
     public IAsyncRelayCommand AddCommand { get; }
     public IAsyncRelayCommand EditCommand { get; }
     public IAsyncRelayCommand RemoveCommand { get; }
     public IAsyncRelayCommand RegisterCommand { get; }
 
-    public LibraryViewModel(IVmRepository repository, ILibraryDialogs dialogs, ILogger<LibraryViewModel> logger)
+    public LibraryViewModel(IVmRepository repository, ILibraryDialogs dialogs, ILogger<LibraryViewModel> logger,
+        IVmCreationService creation, QemuToolSelection tools, ILogger<CreationWizardViewModel> creationLogger)
     {
         _repository = repository;
         _dialogs = dialogs;
         _logger = logger;
+        _creation = creation; _tools = tools; _creationLogger = creationLogger;
         Error = "";
         IsEmpty = true;
         ReloadCommand = new AsyncRelayCommand(() => RunAsync(ReloadAsync), () => !IsBusy);
+        CreateCommand = new AsyncRelayCommand(() => RunAsync(CreateAsync), () => !IsBusy);
         AddCommand = new AsyncRelayCommand(() => RunAsync(() => EditAsync(null)), () => !IsBusy);
         EditCommand = new AsyncRelayCommand(() => RunAsync(() => EditAsync(SelectedMachine)), () => !IsBusy && SelectedMachine is not null);
         RemoveCommand = new AsyncRelayCommand(() => RunAsync(RemoveAsync), () => !IsBusy && SelectedMachine is not null);
@@ -60,6 +68,7 @@ public sealed partial class LibraryViewModel : ObservableObject
     private void NotifyCommands()
     {
         ReloadCommand?.NotifyCanExecuteChanged();
+        CreateCommand?.NotifyCanExecuteChanged();
         AddCommand?.NotifyCanExecuteChanged();
         EditCommand?.NotifyCanExecuteChanged();
         RemoveCommand?.NotifyCanExecuteChanged();
@@ -123,6 +132,15 @@ public sealed partial class LibraryViewModel : ObservableObject
             await ReloadAsync();
             SelectedMachine = Machines.FirstOrDefault(item => item.Snapshot.Configuration.Id == savedId);
         }
+    }
+
+    private async Task CreateAsync()
+    {
+        var wizard = new CreationWizardViewModel(_creation, _tools, _creationLogger);
+        await _dialogs.CreateAsync(wizard);
+        await ReloadAsync();
+        if (wizard.CreatedMachine is not null)
+            SelectedMachine = Machines.FirstOrDefault(item => item.Snapshot.Configuration.Id == wizard.CreatedMachine.Configuration.Id);
     }
 
     private async Task RemoveAsync()

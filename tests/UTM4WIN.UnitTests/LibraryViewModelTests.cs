@@ -39,7 +39,7 @@ public sealed class LibraryViewModelTests
                 Assert.AreEqual("Concurrent edit", editor.Error);
             }
         };
-        var model = new LibraryViewModel(new TestRepository(snapshot), dialogs, NullLogger<LibraryViewModel>.Instance);
+        var model = CreateModel(new TestRepository(snapshot), dialogs);
         await model.ReloadCommand.ExecuteAsync(null);
         model.SelectedMachine = model.Machines.Single();
         await model.EditCommand.ExecuteAsync(null);
@@ -55,7 +55,7 @@ public sealed class LibraryViewModelTests
         var leave = new TaskCompletionSource();
         var dialogs = new TestDialogs { Edit = async (_, _) => { entered.SetResult(); await leave.Task; } };
         var repository = new TestRepository(snapshot);
-        var model = new LibraryViewModel(repository, dialogs, NullLogger<LibraryViewModel>.Instance);
+        var model = CreateModel(repository, dialogs);
         await model.ReloadCommand.ExecuteAsync(null);
         model.SelectedMachine = model.Machines.Single();
         var edit = model.EditCommand.ExecuteAsync(null);
@@ -82,9 +82,18 @@ public sealed class LibraryViewModelTests
 
     private sealed class TestDialogs : ILibraryDialogs
     {
+        public Task CreateAsync(CreationWizardViewModel wizard) => Task.CompletedTask;
         public Func<MetadataEditorViewModel, Func<VmConfiguration, Task<bool>>, Task> Edit { get; init; } = (_, _) => Task.CompletedTask;
         public Task EditAsync(MetadataEditorViewModel editor, bool isNew, Func<VmConfiguration, Task<bool>> save) => Edit(editor, save);
         public Task<bool> ConfirmRemoveAsync(string name) => Task.FromResult(false);
+    }
+
+    private static LibraryViewModel CreateModel(IVmRepository repository, ILibraryDialogs dialogs) => new(repository, dialogs,
+        NullLogger<LibraryViewModel>.Instance, new TestCreation(), new QemuToolSelection(), NullLogger<CreationWizardViewModel>.Instance);
+
+    private sealed class TestCreation : IVmCreationService
+    {
+        public Task<VmSnapshot> CreateAsync(VmCreationRequest request, IProgress<string>? progress = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class TestRepository(VmSnapshot snapshot) : IVmRepository

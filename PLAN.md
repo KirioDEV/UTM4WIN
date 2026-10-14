@@ -1,7 +1,7 @@
 # UTM4WIN Architecture and Development Plan
 
-Status: M0 accepted for the qualified Windows 11 x64/100%-scaled profile; M1 and M2 completed following their respective user instructions. The application now has typed VM metadata, versioned JSON persistence, library registration and a native editor. Forty automated tests and thirty-two native UI checks passed; CLI and Rider builds succeed. Actual higher/mixed-DPI qualification remains mandatory at M5. M3–M8 are not started and remain unauthorized; production release and QEMU redistribution are unapproved.
-Evidence reviewed: 2026-10-14. The latest continuation authorizes M2 only. Earlier approvals covered M0 feasibility and M1 foundation packages. Subsequent milestones, additional guest-media downloads, unrelated dependencies and system changes require their own authorization.
+Status: M0 accepted for the qualified Windows 11 x64/100%-scaled profile; M1–M3 completed following their respective user instructions. Creation now prepares a managed qcow2 disk, read-only ISO reference and registered configuration. Sixty-four ordinary tests, three explicit QEMU integration tests and thirty-five native UI assertions pass; CLI/Rider builds succeed. Actual higher/mixed-DPI qualification remains mandatory at M5. M4–M8 are not started and remain unauthorized; production release and QEMU redistribution are unapproved.
+Evidence reviewed: 2026-10-14. The latest continuation authorizes M3 only, using the already approved QEMU tools and Debian ISO for qualification. Earlier approvals covered M0 feasibility and M1 foundation packages. Subsequent milestones, additional guest-media downloads, unrelated dependencies and system changes require their own authorization.
 
 ## 1. Product goal and scope
 
@@ -285,6 +285,8 @@ Completed on 2026-10-14; section 30 records the schema policy, persistence bound
 Scope: profile-based wizard, user ISO, safe new qcow2 creation, commit/rollback of owned artifacts.
 Acceptance: valid configuration and disk are created and registered once; cancel, disk-full, inaccessible paths and destination collisions preserve existing data; external ISO is read-only and never copied/deleted implicitly.
 
+Completed on 2026-10-14; section 31 records executed verification and remaining boundaries.
+
 ### M4 — QEMU lifecycle and control
 
 Scope: approved launch profile, owned process/job, QMP, operation serialization, state projection, logs and shutdown UX. External display may be used only as the acknowledged interim console.
@@ -327,7 +329,7 @@ The dependency chain is M0 → M1 → M2 → M3 → M4 → M5, then separately a
 | Host edition and ARM64 support | Unverified support claims | Dedicated hardware/OS qualification before advertising |
 | Package/runtime deployment choice | Clean-machine launch or upgrade failures | M0 development proof; M8 release decision |
 
-Recommended next step: review the M2 metadata library and then separately authorize M3 for the creation workflow and managed storage. M2 does not create a bootable guest or launch virtualization. Actual higher/mixed-DPI qualification remains a required M5 gate; the restricted client profile and redistribution boundaries remain unchanged.
+Recommended next step: review the M3 creation wizard and then separately authorize M4 for QEMU lifecycle, QMP, runtime ownership and start/stop controls. M3 prepares installation media references and a blank disk; it does not start or install a guest. Actual higher/mixed-DPI qualification remains a required M5 gate; the restricted client profile and redistribution boundaries remain unchanged.
 
 ## 14. Planning validation and change boundary
 
@@ -959,3 +961,45 @@ Thirty-two native UI assertions pass in a separate scratch library: name validat
 Rider solution build session `6eb18abc-3d31-4a89-b569-b38b91b1c057` completes successfully with no reported problems; a subsequent CLI locked restore also succeeds without lockfile changes. All test applications closed; the default user library was not populated by testing. README.md documents usage, recovery and limits. Changes are confined to Domain/Application/Infrastructure/App, three new test files, README.md and PLAN.md; project/package versions, Git state/history, reference files and the QEMU adapter boundary are preserved. All changes remain unstaged/uncommitted.
 
 M2 acceptance is satisfied for metadata/library scope on this host. It does not create a disk, install a guest or start QEMU. Full creation is M3, lifecycle/runtime ownership is M4, integrated guest console and actual higher/mixed-DPI qualification are M5. Theme persistence, bounded file logs and clean-machine packaging remain later work.
+
+## 31. M3 creation wizard and managed qcow2 storage
+
+Date: 2026-10-14. The latest "Mach weiter" after the M2 handover authorizes M3. The already approved external QEMU 11.1.0 tools and Debian 13.7 ISO were reused. No binary/media download, package change, guest launch, Windows setting or redistribution was introduced. M4 and subsequent milestones remain separately authorized work.
+
+### Reference and qualified tool
+
+Read-only inspection of `reference/UTM-main/Configuration/UTMConfigurationDrive.swift`, symbols `saveData(to:)`, `createRawImage(at:size:)` and `createQcow2Image(at:size:)`, shows that external resources bypass owned-data saving, generated images receive UUID-derived names, existing destinations are rejected, raw capacity uses file truncation and qcow2 creation calls `QEMUGenerateDefaultQcow2File`. Its ASIF path is Apple/macOS-specific. These are reference workflows, not code copied into UTM4WIN. Our implementation invokes a qualified external Windows image tool and uses independent creation/rollback contracts.
+
+The local tool reports `qemu-img version 11.1.0 (v11.1.0-12130-ge470268ff4)` and supports `compat=1.1` and `preallocation=off`. SHA-256 `9D930582D0D574BB106D89982C547688E10B8F356192D302CC3D0AE4E8674534` is pinned in QemuImgDiskService. The executable is guarded against writes/replacement while hashing and executing; another build fails before disk creation. This is executable qualification, not validation of all DLLs or a malicious-installation security sandbox. The external tool installation remains trusted and unbundled.
+
+Context7 supplied QEMU format/storage documentation and Windows App SDK picker/theme APIs; official QEMU CLI documentation and the installed binary qualified the actual command syntax. [QEMU image tool](https://www.qemu.org/docs/master/tools/qemu-img.html), [Windows App SDK file picker](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.windows.storage.pickers.fileopenpicker), [WinUI RequestedTheme](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.frameworkelement.requestedtheme).
+
+### Creation boundary and persistence
+
+- Application defines creation requests/validation, a creation service port and an owned disk lease. Infrastructure coordinates creation through the existing JSON repository; the QEMU adapter implements disk creation. Infrastructure and QEMU do not reference each other. No new dependency/project is needed.
+- Native wizard: profile/hardware → ISO/disk/tool → review. The single current profile is Linux x86_64 BIOS. CPU/memory validation stays bounded; virtual disk capacity is 1–2048 whole GiB. Native file pickers use the parent AppWindow ID. Tool selection is remembered for the app session only after successful creation. New dialogs explicitly follow the root's actual light/dark theme.
+- ISO validation requires a local readable file with a supported ISO 9660 volume descriptor. The file remains open with read-only access and Read sharing throughout creation. It is referenced externally, never copied or deleted. This check does not authenticate media or establish guest ISA/bootability; UDF-only and other firmware profiles remain unsupported.
+- Under the library-wide exclusive lock, reject existing UUID directories/index entries and capacity overflow before creating VM artifacts. Reserve `disks/system.qcow2` with CreateNew, hold a write-sharing/non-delete file guard, invoke `create -q -f qcow2 -o compat=1.1,preallocation=off`, and inspect via `info -f qcow2 --output=json`. Verify format/virtual capacity and reject backing files, external data, encryption or reported corruption. Sparse capacity is not full allocation or a reservation for future guest writes.
+- The new disk lease remains owned until configuration commit. Review requires explicit consent to remove this operation's incomplete disk. Cancellation/failure before metadata commit discards only that disk and operation-created empty directories. Cleanup never recursively deletes and preserves unexpected files. If child exit cannot be confirmed, its disk is retained for manual recovery.
+- Once vm.json commits, retain the disk before writing registration. Failure/cancellation in that second commit leaves disk/configuration available for reload and explicit retained-entry registration. Closing the wizard reloads the library even after unsuccessful creation. App crashes can leave partial artifacts; startup never assumes permission to delete them.
+- Configuration schema remains 1; no existing metadata is migrated or overwritten by creation. Network remains None, firmware BIOS and machine alias pc. M4 must qualify runtime capabilities, machine version, resource/session exclusion and launch behavior. This milestone does not boot/install a guest.
+
+### Owned command execution
+
+The M0-qualified native ownership pattern was independently brought into the QEMU adapter for short-lived tools: unnamed kill-on-close Job Object assigned by CreateProcessW/STARTUPINFOEX JOB_LIST, suspended verification before resume, and an allowlist containing only redirected stdin/stdout/stderr. No uncontained fallback, shell or extra user command string exists. Standard ProcessStartInfo.ArgumentList cannot expose atomic job assignment, so Windows argument quoting is explicitly implemented and round-trip tested. [Windows process attributes](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute), [Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects).
+
+Each command has a thirty-second cancellation deadline, 64 Ki-character limits per output stream, a bounded completion wait and five-second native cleanup verification. Cancellation/timeout is checked again after output/exit completion so a job-terminated child's zero exit code cannot be mistaken for a successful command. Cleanup uncertainty preserves the image. This is not an audit of every OS failure or descendant-process scenario; real guest lifecycle remains M4 work.
+
+### Executed acceptance
+
+CLI Debug build succeeds with zero warnings/errors. Sixty-four ordinary tests pass without QEMU, using inert fixtures and controlled failure injection. They include previous M1/M2 coverage plus creation identity/registration, ISO preservation, missing/invalid/locked media, destination collisions, simulated disk-full, pre-commit cancellation, metadata interruption, post-metadata cancellation/index interruption and recovery, preservation of unexpected files, cleanup consent, wizard state/coordination and argument/returned-image validation. Simulated disk-full is not a physical full-volume test. ISO fixtures establish descriptor-policy behavior rather than a bootable guest.
+
+Three explicit `QemuIntegration` tests pass with the approved binary: real sparse qcow2 creation/inspection/reload/removal-preservation/re-registration, unretained-lease cleanup and existing-disk rejection, and cancellation of a running owned read-only benchmark before disk cleanup. Test paths include spaces, commas and Unicode. These tests create unique disposable images only; ordinary test instructions exclude the category and missing explicit tool selection makes it inconclusive. A zero exit code after job close is not used as graceful-exit evidence.
+
+Thirty-five native UI assertions pass against an isolated scratch library, including name/media validation, keyboard focus, explicit draft discard, native ISO picker cancel/select with owned-HWND message checks, cleanup consent, Back preserving inputs, actual thirty-two-GiB qcow2 creation, exactly one library entry, owned-disk/read-only-external-ISO configuration, unchanged ISO SHA-512, reload without resource errors, normal close/code 0, and narrow-window controls. Dark and corrected light/narrow screenshots were visually inspected at 1100×760 and 620×560. UI input is synthetic automation; no new physical-input/DPI qualification is claimed. Evidence: `%LOCALAPPDATA%/UTM4WIN/M3/ui-0be0dbf2ea584c79ab034a1dd8e726a7/ui-checks.json` and captures. Test VMs/images remain in their isolated evidence libraries; the default user library was not populated.
+
+Initial issues were corrected: StackPanel has no IsEnabled (group controls now use ContentControl); reopening a newly leased disk with Read-only sharing conflicted with its write guard (creation relies on the validated/pinned lease); duplicate creation was initially misclassified by index validation ordering; a benchmark test wrongly assumed job-killed processes have nonzero exit codes. Native picker automation initially targeted an ancestor/unsupported pattern and raced the async returned path; final checks target the actual owned native dialog and await field update. Visual review found a dark popup in a light root; dialogs now explicitly receive the window theme and light captures confirm the correction.
+
+Rider build session `b1b660a6-8bb4-4f69-8ec2-521bfae35453` completes successfully with no reported problems. A subsequent CLI locked restore succeeds without package/lockfile changes. All owned app/tool processes are closed. README.md documents creation, approved tool selection, cancellation/recovery and separate integration commands. Changes are confined to Application/Infrastructure/QEMU/App, creation tests, README.md and PLAN.md. Domain/schema/package/project files, the read-only reference, existing media/user disks, Windows settings and Git state/history are preserved; all changes remain unstaged/uncommitted.
+
+M3 acceptance is satisfied for creation/storage scope on this host. M4 lifecycle/start/stop and M5 console/network/DPI are the next functional work, not part of this milestone. Physical disk-full/power-loss, hostile filesystem replacement, other QEMU builds/guest profiles and clean-machine release deployment remain unqualified.

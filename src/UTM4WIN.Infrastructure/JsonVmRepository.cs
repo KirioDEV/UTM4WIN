@@ -79,6 +79,77 @@ public sealed class JsonVmRepository : IVmRepository
         return ConfigurationJson.Deserialize(bytes);
     }, cancellationToken);
 
+    internal Task<VmSnapshot> CreateWithDiskAsync(VmCreationRequest request, IDiskImageService diskImages,
+        IProgress<string>? progress, CancellationToken cancellationToken) => WithLockAsync(async () =>
+    {
+        VmCreationValidator.Validate(request);
+        var configuration = request.Configuration with
+        {
+            Storage = [new() { Id = Guid.NewGuid(), Path = "disks/system.qcow2", Ownership = ResourceOwnership.Owned, Format = DiskFormat.Qcow2, IsReadOnly = false },
+                new() { Id = Guid.NewGuid(), Path = request.IsoPath, Ownership = ResourceOwnership.External, Format = DiskFormat.Iso, IsReadOnly = true }]
+        };
+        byte[] bytes = ConfigurationJson.Serialize(configuration);
+        var index = await ReadIndexAsync(cancellationToken);
+        var updatedIndex = index with { Ids = [.. index.Ids, configuration.Id] };
+        string directory = VmDirectory(configuration.Id);
+        string disks = Path.Combine(directory, "disks");
+        PathSafety.Check(directory);
+        if (index.Ids.Contains(configuration.Id) || Directory.Exists(directory) || File.Exists(directory))
+            throw new ConfigurationConflictException("This VM ID already has retained files or a library entry. Nothing was overwritten.");
+        ValidateIndex(updatedIndex);
+        progress?.Report("Validating installation media…");
+        PathSafety.Check(request.IsoPath);
+        await using var iso = new FileStream(request.IsoPath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.Asynchronous);
+        await CheckIsoAsync(iso, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        bool committed = false;
+        try
+        {
+            Directory.CreateDirectory(disks);
+            progress?.Report($"Creating sparse {request.DiskSizeGiB} GiB disk…");
+            await using var disk = await diskImages.CreateAsync(request.QemuImgPath, Path.Combine(disks, "system.qcow2"),
+                checked((long)request.DiskSizeGiB * 1024 * 1024 * 1024), cancellationToken);
+            // The disk lease already validates and pins its new file; reopening with Read sharing
+            // would conflict with its write guard. The external ISO is also pinned above.
+            cancellationToken.ThrowIfCancellationRequested();
+            progress?.Report("Saving and registering the virtual machine…");
+            await _writer.WriteAsync(VmPath(configuration.Id), bytes, cancellationToken);
+            committed = true;
+            disk.Retain();
+            await WriteIndexAsync(updatedIndex, cancellationToken);
+            return ConfigurationJson.Deserialize(bytes);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            throw new IOException(committed
+                ? $"VM {configuration.Id} was saved but registration failed. Close the wizard, reload and register its retained metadata. {exception.Message}"
+                : $"VM creation failed for {configuration.Id}. {exception.Message}", exception);
+        }
+        finally
+        {
+            // Never recursively delete: only empty directories made by this operation can be removed.
+            if (!committed)
+            {
+                PathSafety.Check(disks);
+                if (Directory.Exists(disks) && !Directory.EnumerateFileSystemEntries(disks).Any()) Directory.Delete(disks);
+                PathSafety.Check(directory);
+                if (Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any()) Directory.Delete(directory);
+            }
+        }
+    }, cancellationToken);
+
+    private static async Task CheckIsoAsync(FileStream stream, CancellationToken cancellationToken)
+    {
+        byte[] descriptor = new byte[7];
+        for (int sector = 16; sector < 32 && stream.Length >= sector * 2048L + descriptor.Length; sector++)
+        {
+            stream.Position = sector * 2048L;
+            await stream.ReadExactlyAsync(descriptor, cancellationToken);
+            if (descriptor.AsSpan(1, 5).SequenceEqual("CD001"u8) && descriptor[6] == 1) return;
+        }
+        throw new ConfigurationException("The selected ISO has no supported ISO 9660 volume descriptor. Choose Linux installation media.");
+    }
+
     public Task RegisterAsync(Guid id, CancellationToken cancellationToken = default) => WithLockAsync(async () =>
     {
         var index = await ReadIndexAsync(cancellationToken);
