@@ -5,7 +5,7 @@ Evidence reviewed: 2026-10-14. The latest continuation authorizes M3 only, using
 
 ## 1. Product goal and scope
 
-Build an independent Windows 11 VM manager in C# and .NET 10 using native WinUI 3, Windows App SDK and MVVM. Preserve the usefulness of UTM's guided VM creation, library and lifecycle controls while adopting Windows conventions and original assets. Rider remains the development IDE. No upstream source or branding is copied.
+Build an independent Windows 11 VM manager in C# and .NET 10 using native WinUI 3, Windows App SDK and MVVM. The user's later clarification makes close UTM-for-macOS visual and interaction fidelity an explicit product goal: screen composition, visual hierarchy, VM presentation, guided creation and settings should feel recognizably similar. WinUI is the implementation technology; a generic Fluent dashboard is not the intended final design. Preserve appropriate Windows window/input/file-picker conventions and original UTM4WIN assets. Rider remains the development IDE. No upstream source or branding is copied.
 
 The recommended first backend is an external QEMU process with WHPX for compatible guests and explicitly selected TCG emulation where appropriate. This is a provisional architecture: the selected Windows QEMU build, display integration and toolchain must pass milestone M0 before becoming implementation commitments.
 
@@ -204,13 +204,15 @@ Clipboard and shared directories are opt-in future capabilities requiring guest-
 
 ## 9. UI and user workflows
 
-WinUI library page: VM list, search, status and an accessible details pane. Show useful empty/error/loading states, execution mode and unavailable-feature reasons. Use native Fluent controls and original icons, light/dark/system themes, keyboard navigation, screen-reader labels and high-contrast support.
+UTM-oriented WinUI library: a sidebar of VM entries and a selected-VM detail area, with recognizable entry icons/previews, a prominent preview region and grouped VM information/actions. Match UTM's overall composition, proportions, spacing, information density and navigation behavior closely instead of defaulting to a generic application sidebar plus a command-button row. Show useful empty/error/loading states, execution mode and unavailable-feature reasons. Use native WinUI controls and original icons, light/dark/system themes, keyboard navigation, screen-reader labels and high-contrast support. Native Windows title bars and file pickers remain appropriate platform adaptations.
 
 Creation flow: guest profile → supported execution mode → ISO → CPU/memory → managed disk destination/size → network → review. Show required capabilities before creating files. Validate each step and the final draft; allow backward navigation and cancel without discarding existing data.
 
 Session window: display surface, pause/resume, guest shutdown, explicit force stop and input-release action. Separate connecting display from starting guest and from booting guest OS. Show a VM can still be running while display is disconnected. Do not label a QEMU process as a fully booted guest without guest-level evidence.
 
 Settings group hardware, storage, network and integration features. Disable unsafe edits during active sessions. Error dialogs include a short cause, a suggested action and a correlation ID with an optional redacted diagnostic view. Do not expose raw implementation details in normal creation steps.
+
+Visual fidelity is a separate acceptance gate from functional correctness: inspect the local macOS/shared UTM views and compare actual reference screens with UTM4WIN at equivalent window sizes and themes. Library/detail composition, creation-page structure and grouped settings must be reviewed before calling the UI design complete. Existing M1–M3 functional acceptance remains valid, but their current views are scaffolding and do not satisfy this newly clarified visual goal. Unsupported controls must not pretend an unavailable operation works; platform-specific differences need a documented reason.
 
 Use UI-thread dispatch only for bound state/rendering. I/O and virtualization stay asynchronous. VM actions use the same application rules whether triggered from a button or another future entry point.
 
@@ -329,7 +331,7 @@ The dependency chain is M0 → M1 → M2 → M3 → M4 → M5, then separately a
 | Host edition and ARM64 support | Unverified support claims | Dedicated hardware/OS qualification before advertising |
 | Package/runtime deployment choice | Clean-machine launch or upgrade failures | M0 development proof; M8 release decision |
 
-Recommended next step: review the M3 creation wizard and then separately authorize M4 for QEMU lifecycle, QMP, runtime ownership and start/stop controls. M3 prepares installation media references and a blank disk; it does not start or install a guest. Actual higher/mixed-DPI qualification remains a required M5 gate; the restricted client profile and redistribution boundaries remain unchanged.
+Recommended next step: review and align the existing library/detail and creation UI with the clarified UTM-oriented design before proceeding with separately authorized M4 lifecycle work. Section 32 records the visual goal and its acceptance boundary; this documentation update implements no UI redesign. M3 prepares installation media references and a blank disk; it does not start or install a guest. Actual higher/mixed-DPI qualification remains a required M5 gate; the restricted client profile and redistribution boundaries remain unchanged.
 
 ## 14. Planning validation and change boundary
 
@@ -1003,3 +1005,19 @@ Initial issues were corrected: StackPanel has no IsEnabled (group controls now u
 Rider build session `b1b660a6-8bb4-4f69-8ec2-521bfae35453` completes successfully with no reported problems. A subsequent CLI locked restore succeeds without package/lockfile changes. All owned app/tool processes are closed. README.md documents creation, approved tool selection, cancellation/recovery and separate integration commands. Changes are confined to Application/Infrastructure/QEMU/App, creation tests, README.md and PLAN.md. Domain/schema/package/project files, the read-only reference, existing media/user disks, Windows settings and Git state/history are preserved; all changes remain unstaged/uncommitted.
 
 M3 acceptance is satisfied for creation/storage scope on this host. M4 lifecycle/start/stop and M5 console/network/DPI are the next functional work, not part of this milestone. Physical disk-full/power-loss, hostile filesystem replacement, other QEMU builds/guest profiles and clean-machine release deployment remain unqualified.
+
+## 32. Clarified UTM visual and interaction goal
+
+The user clarified that UTM4WIN should feel like a close UTM counterpart, especially in its UI. The earlier roadmap prioritized an independent native Fluent application inspired by UTM; it did not establish near-identical visual composition or full feature parity as acceptance requirements. Section 1/9 and AGENTS.md now make close macOS UTM visual hierarchy, layout and workflow similarity explicit. No application/view change is implemented by this clarification; later milestone authorization is unchanged.
+
+Read-only source inspection confirms the following reference structure:
+
+- `reference/UTM-main/Platform/Shared/ContentView.swift`, `ContentView.body`, hosts VMNavigationListView and modal creation/settings integration.
+- `Platform/Shared/VMNavigationListView.swift`, `VMNavigationListView.body`, `listBody` and `CompatibleNavigationSplitView.body`, implements selected-VM sidebar entries using VMCardView and a detail/placeholder column using NavigationSplitView.
+- `Platform/Shared/VMDetailsView.swift`, `VMDetailsView.body`, places a Screenshot view above details, with snapshot tabs conditional on actual backend support.
+- `Platform/macOS/VMSettingsView.swift`, `VMSettingsView.body`, uses a sidebar list of backend-specific settings and a detail area; its toolbar provides Save/Cancel.
+- `Platform/macOS/VMWizardView.swift`, `VMWizardView.body`, switches between start, operating-system, boot-media, hardware, drives, sharing and summary views with backward/continue/save actions.
+
+These inspected implementations guide independent Windows view composition. Source inspection does not establish pixel measurements, exact colors, current upstream appearance or a completed screenshot comparison. Before substantial redesign, establish a visual reference and review the corresponding library/details, wizard and settings screens at comparable dimensions/themes. Windows-native window chrome, dialogs and accessibility are adaptations, not a reason to replace the overall UTM composition with a generic dashboard.
+
+Functional ambition is close UTM parity where validated Windows backends can provide it. The existing staged roadmap still governs delivery; Apple Virtualization features, macOS guest support and unqualified integrations are not promised by a visual goal. Use UTM4WIN branding/original assets and never copy reference source. The current M1–M3 UI remains usable scaffolding awaiting visual alignment. This task changes only PLAN.md and AGENTS.md; reference files and application code remain unchanged. No build/test rerun is needed for these documentation-only changes. Changes remain unstaged/uncommitted.

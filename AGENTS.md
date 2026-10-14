@@ -160,14 +160,18 @@ The application must use native WinUI 3 with Windows App SDK.
 
 Design goals:
 
+- Closely match UTM for macOS in visual hierarchy, screen composition and interaction flow. UTM similarity takes priority over a generic Fluent dashboard layout.
+- Use a VM sidebar/library with a selected-VM detail area, recognizable VM entries/previews, a guided creation flow and grouped VM settings modeled on the inspected UTM views.
 - Native Windows 11 experience.
-- Fluent Design.
+- Use native WinUI/Fluent controls while preserving the UTM-oriented layout; retain Windows title bars, file pickers and keyboard conventions.
 - Dark and light themes.
 - Responsive layouts.
 - Accessible controls.
 - Keyboard navigation.
 - Consistent spacing and typography.
 - Clear loading, empty and error states.
+
+The user clarified that the intended experience should feel like a close UTM counterpart, especially visually. The existing foundation UI is functional scaffolding, not the final visual design. Before substantial UI work, inspect the relevant local UTM view implementations and compare available screenshots; document meaningful Windows-specific deviations. Implement independently with UTM4WIN branding and original assets. This visual goal does not promise all UTM backends, Apple-only features or every guest OS, and does not authorize later implementation milestones automatically.
 
 Use MVVM for UI state and application behavior.
 
