@@ -24,11 +24,11 @@ public sealed partial class JsonVmRepository {
             if (current.Revision != snapshot.Revision)
                 throw new ConfigurationConflictException("VM settings changed. Reload before starting.");
             var configuration = current.Configuration;
-            if (configuration.Network != NetworkMode.None || configuration.Storage.Length is < 1 or > 2 ||
+            if (configuration.Storage.Length is < 1 or > 2 ||
                 configuration.Storage.Count(resource => resource.Ownership == ResourceOwnership.Owned && resource.Format == DiskFormat.Qcow2 && !resource.IsReadOnly) != 1 ||
                 configuration.Storage.Any(resource => resource.Ownership == ResourceOwnership.External && (resource.Format != DiskFormat.Iso || !resource.IsReadOnly)) ||
                 configuration.Storage.Count(resource => resource.Format == DiskFormat.Iso) != configuration.Storage.Length - 1)
-                throw new ConfigurationException("Starting requires one managed writable qcow2 disk and optionally one read-only external ISO, with networking disabled.");
+                throw new ConfigurationException("Starting requires one managed writable qcow2 disk and optionally one read-only external ISO.");
             guards.Add(new(VmPath(id), FileMode.Open, FileAccess.Read, FileShare.Read));
             var resources = new List<ExecutionResource>();
             foreach (var resource in configuration.Storage) {

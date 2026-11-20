@@ -59,6 +59,17 @@ public sealed class ExecutionLeaseTests {
         Assert.AreEqual(@"C:\safe, folder\雪.qcow2", disk.RootElement.GetProperty("file").GetProperty("filename").GetString());
         Assert.IsFalse(arguments.Contains("-vnc"));
         CollectionAssert.Contains(arguments, "stdio");
+        Assert.AreEqual("none", arguments[Array.IndexOf(arguments, "-nic") + 1]);
+        Assert.IsFalse(arguments.Contains("-netdev"));
+        using var networked = new ArgumentLease(configuration with {
+            Id = new Guid("a1b2c3d4-0000-0000-0000-000000000000"),
+            Network = NetworkMode.User
+        });
+        var networkArguments = QemuBackend.BuildArguments(networked, new("unused", false, false));
+        Assert.IsFalse(networkArguments.Contains("-nic"));
+        Assert.AreEqual("user,id=guestnet", networkArguments[Array.IndexOf(networkArguments, "-netdev") + 1]);
+        CollectionAssert.Contains(networkArguments, "virtio-net-pci,netdev=guestnet,mac=52:54:00:d4:c3:b2");
+        Assert.IsFalse(networkArguments.Any(argument => argument.Contains("hostfwd", StringComparison.Ordinal)));
         Assert.Throws<ConfigurationException>(() => QemuBackend.BuildArguments(lease, new("unused", false, true)));
         Assert.Throws<ConfigurationException>(() => QemuBackend.RequireRuntimePath(@"C:\雪\disk.qcow2"));
     }

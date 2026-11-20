@@ -1,6 +1,6 @@
 # UTM4WIN Architecture and Development Plan
 
-Status: M0 accepted for the qualified Windows 11 x64/100%-scaled profile; M1–M4 completed for the qualified host/profile following their respective user instructions. M5 is in progress: the first increment replaces the interim SDL window with an integrated native guest console (section 35). Eighty ordinary tests and six explicit QEMU integration tests pass. The user confirmed physical input and monitor movement; the console observed 100% and 125% scaling. Networking and the complete installed-Linux workflow remain M5 acceptance gates. M6–M8 are not started; production release and QEMU redistribution remain unapproved.
+Status: M0 accepted for the qualified Windows 11 x64/100%-scaled profile; M1–M4 completed for the qualified host/profile following their respective user instructions. M5 is in progress: the first increment replaces the interim SDL window with an integrated native guest console (section 35). The second increment adds optional user-mode NAT networking (section 36). Eighty-two ordinary tests and six explicit QEMU integration tests pass. The user confirmed physical input and monitor movement; the console observed 100% and 125% scaling. Guest-level NAT connectivity and the complete installed-Linux workflow remain M5 acceptance gates. M6–M8 are not started; production release and QEMU redistribution remain unapproved.
 Evidence reviewed: 2026-10-14. Continuation after UI alignment authorizes M4 lifecycle/control. Already approved QEMU tools, Debian ISO and a new copy of the earlier disposable test guest were reused. Additional dependencies/media and system changes require their own authorization; the integrated console remains the next milestone.
 
 ## 1. Product goal and scope
@@ -1118,3 +1118,30 @@ The user physically tested an isolated 512 MiB/one-CPU Debian guest and reported
 The follow-up restart test exposed a nonzero application exit when the main window closed while a console was still asynchronously releasing its connection. Main-window closure now waits for every console's Closed completion before allowing shell teardown. Six additional native assertions at `%LOCALAPPDATA%/UTM4WIN/M5/close-eaa52eb50bc24ce1a9ed15021c5c116e/checks.json` pass: replacement of the ended console on restart, closure with a stopped console, forced closure with a running console, zero exit status in both cases and absence of owned QEMU children. All test apps/children exited; the isolated test library is retained outside the repository.
 
 M5 remains in progress. Remaining gates include NAT networking and a complete installed Linux guest boot/shutdown/reboot workflow through the application. The mixed-DPI gate is satisfied for the observed 100%/125% host profile. Additional guest architectures, macOS support, all keyboard layouts, broad compatibility and clean-machine release deployment are not qualified by this increment. Changes remain unstaged/uncommitted; reference material and existing media remain unchanged.
+
+## 36. M5 second increment: user-mode NAT networking
+
+Date: 2026-11-12. The user's continuation authorizes the next M5 increment. This section records the NAT configuration and launch profile, not completion of the Linux MVP milestone.
+
+### Reference and qualified runtime
+
+Context7 supplied the QEMU invocation, networking and QMP `NetdevUserOptions` documentation: the user backend needs no administrator privilege, defaults to guest network 10.0.2.0/24 with gateway/host 10.0.2.2 and DNS 10.0.2.3, blocks incoming connections unless forwarded, and generally does not carry ICMP beyond the virtual router. [QEMU network emulation](https://www.qemu.org/docs/master/system/devices/net.html), [QEMU invocation](https://www.qemu.org/docs/master/system/invocation.html).
+
+The already approved QEMU 11.1.0 binary lists `user` among its netdev backends and `virtio-net-pci` among its devices. A diskless, paused TCG probe of the exact production arguments reported one Ethernet PCI function and, through `query-rx-filter`, one NIC carrying the supplied MAC; no default second NIC appears. No new binary, package, driver or media was downloaded and no Windows network, firewall or feature setting was changed.
+
+### Delivered behavior and boundaries
+
+- Schema 1 already contains `NetworkMode.None`/`User`; no schema or migration change is needed. The execution lease no longer rejects `User`.
+- `User` launches `-netdev user,id=guestnet` with `-device virtio-net-pci,netdev=guestnet,mac=…`; `None` keeps `-nic none`. The MAC is derived from the VM ID inside QEMU's locally administered `52:54:00` range, so it is stable per VM without a new persisted field. It is not a collision-free identity for future bridged modes or clones; M7 cloning must revisit it.
+- No `hostfwd`, `guestfwd`, SMB or TFTP option is emitted, and `restrict` stays off so the guest has outbound access. Consequently the guest can reach services listening on the host through the virtual gateway. NAT is not presented as a security sandbox.
+- The creation wizard's hardware step has a network switch, enabled by default like UTM's shared network; the summary states the choice. VM settings → Network offers Disabled or Shared network (NAT), saved through the existing stopped-only, revision-checked draft path. Existing entries keep their stored `None` value.
+
+Port forwarding, bridged/TAP networking, alternative NIC models, MAC editing, IPv4/IPv6 selection and live link changes remain out of scope.
+
+### Executed verification and remaining acceptance
+
+CLI build reports zero warnings/errors and locked restore succeeds. Eighty-two ordinary tests pass; new coverage checks both network argument forms, the derived MAC, absence of forwarding options, the wizard default/opt-out and the editor's change tracking and rejection of undefined modes. All six explicit QEMU integration tests pass; the twenty-cycle lifecycle test now alternates NAT and no network, so real start/pause/resume/force-stop runs with NAT under both TCG and WHPX. No QEMU process remained afterwards.
+
+Not verified: DHCP, DNS and outbound traffic inside a guest. The retained disposable guest has no NIC configuration or usable login, and the installer was not driven automatically. No native UI automation or visual capture was run for the new switch and combo box; they compile and their view models are tested. Rider's own build was not rerun for this increment.
+
+M5 remains in progress. Remaining gate: the complete create → install (with network) → reboot → pause/resume → shutdown → app restart → start workflow through the application on a disposable guest, which also supplies the guest-level NAT evidence. Changes remain unstaged/uncommitted; reference material and existing media are unchanged.

@@ -49,8 +49,12 @@
                 </StackPanel>
                 <StackPanel Visibility="{x:Bind ToVisibility(ViewModel.IsNetworkSection), Mode=OneWay}" Spacing="16">
                     <TextBlock Text="Network" Style="{StaticResource SubtitleTextBlockStyle}" />
-                    <TextBlock Text="{x:Bind ViewModel.NetworkLabel}" />
-                    <TextBlock Text="Network configuration changes are not available yet." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <ComboBox Header="Network mode" SelectedIndex="{x:Bind ViewModel.NetworkModeIndex, Mode=TwoWay}" HorizontalAlignment="Stretch" AutomationProperties.Name="Network mode">
+                        <ComboBoxItem Content="Disabled" />
+                        <ComboBoxItem Content="Shared network (NAT)" />
+                    </ComboBox>
+                    <TextBlock Text="Emulated network card: virtio-net-pci" />
+                    <TextBlock Text="Shared network gives the guest outbound access through this PC without changing Windows network settings. The guest is not reachable from your network, but it can reach services running on this PC. Port forwarding and bridged networking are not available yet." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
                 <StackPanel Visibility="{x:Bind ToVisibility(ViewModel.IsDisplaySection), Mode=OneWay}" Spacing="16">
                     <TextBlock Text="Display" Style="{StaticResource SubtitleTextBlockStyle}" />

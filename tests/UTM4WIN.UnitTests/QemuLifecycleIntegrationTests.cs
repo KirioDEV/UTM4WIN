@@ -29,7 +29,8 @@ public sealed class QemuLifecycleIntegrationTests {
             await using var sessions = new VmSessionService(repository, new QemuBackend());
             for (int cycle = 0; cycle < 20; cycle++) {
                 snapshot = await repository.SaveAsync(snapshot.Configuration with {
-                    ExecutionMode = cycle < 10 ? ExecutionMode.Tcg : ExecutionMode.Whpx
+                    ExecutionMode = cycle < 10 ? ExecutionMode.Tcg : ExecutionMode.Whpx,
+                    Network = cycle % 2 == 0 ? NetworkMode.User : NetworkMode.None
                 }, snapshot.Revision);
                 await sessions.StartAsync(snapshot, new(executable, false));
                 Guid id = snapshot.Configuration.Id;

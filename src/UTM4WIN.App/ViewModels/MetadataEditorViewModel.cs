@@ -16,7 +16,11 @@ public sealed partial class MetadataEditorViewModel : ObservableObject {
     public bool IsNetworkSection => SectionIndex == 3;
     public bool IsDisplaySection => SectionIndex == 4;
     public VmConfiguration OriginalConfiguration => _draft.Configuration;
-    public string NetworkLabel => OriginalConfiguration.Network == NetworkMode.None ? "Disabled" : "User-mode networking";
+    [ObservableProperty]
+    public partial int NetworkModeIndex {
+        get;
+        set;
+    }
     public string DriveSummary => OriginalConfiguration.Storage.IsEmpty ? "No drives configured. Use Create VM to prepare installation media and a disk." : "Managed disks stay in the VM directory. External installation media is read-only.";
     partial void OnSectionIndexChanged(int value) {
         foreach (string property in new[] { nameof(IsInfoSection), nameof(IsSystemSection), nameof(IsDrivesSection), nameof(IsNetworkSection), nameof(IsDisplaySection) })
@@ -59,6 +63,7 @@ public sealed partial class MetadataEditorViewModel : ObservableObject {
         CpuCount = snapshot.Configuration.CpuCount;
         MemoryMiB = snapshot.Configuration.MemoryMiB;
         ExecutionModeIndex = (int)snapshot.Configuration.ExecutionMode;
+        NetworkModeIndex = (int)snapshot.Configuration.Network;
         Error = "";
     }
 
@@ -66,7 +71,8 @@ public sealed partial class MetadataEditorViewModel : ObservableObject {
 
     public bool HasChanges => Name != _draft.Configuration.Name || CpuCount != _draft.Configuration.CpuCount ||
                               MemoryMiB != _draft.Configuration.MemoryMiB ||
-                              ExecutionModeIndex != (int)_draft.Configuration.ExecutionMode;
+                              ExecutionModeIndex != (int)_draft.Configuration.ExecutionMode ||
+                              NetworkModeIndex != (int)_draft.Configuration.Network;
 
     public VmConfiguration? Validate() {
         if (!double.IsFinite(CpuCount) || CpuCount != Math.Truncate(CpuCount) || CpuCount is < 1 or > 64 ||
@@ -79,10 +85,11 @@ public sealed partial class MetadataEditorViewModel : ObservableObject {
             Name = Name,
             CpuCount = (int)CpuCount,
             MemoryMiB = (int)MemoryMiB,
-            ExecutionMode = (ExecutionMode)ExecutionModeIndex
+            ExecutionMode = (ExecutionMode)ExecutionModeIndex,
+            Network = (NetworkMode)NetworkModeIndex
         };
         var issues = ConfigurationValidator.Validate(configuration);
-        Error = string.Join(Environment.NewLine, issues.Select(issue => issue.Message));
+        Error =string.Join(Environment.NewLine, issues.Select(issue => issue.Message));
         return issues.Count == 0 ? configuration : null;
     }
 }

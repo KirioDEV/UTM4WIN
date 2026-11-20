@@ -60,6 +60,7 @@
                     <TextBox Header="Name" Text="{x:Bind ViewModel.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MaxLength="80" AutomationProperties.Name="New VM name" />
                     <NumberBox Header="Memory (MiB)" Value="{x:Bind ViewModel.MemoryMiB, Mode=TwoWay}" Minimum="128" Maximum="262144" SmallChange="128" SpinButtonPlacementMode="Compact" AutomationProperties.Name="New VM memory" />
                     <NumberBox Header="CPU cores" Value="{x:Bind ViewModel.CpuCount, Mode=TwoWay}" Minimum="1" Maximum="64" SpinButtonPlacementMode="Compact" AutomationProperties.Name="New VM CPUs" />
+                    <ToggleSwitch Header="Network" IsOn="{x:Bind ViewModel.NetworkEnabled, Mode=TwoWay}" OnContent="Shared network (NAT)" OffContent="Disabled" AutomationProperties.Name="New VM network" />
                     <TextBlock Text="Allocate resources to the virtual machine while leaving enough available for Windows." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
             </ContentControl>

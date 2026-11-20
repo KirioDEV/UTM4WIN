@@ -30,8 +30,22 @@ public sealed class CreationWizardTests {
         wizard.DiscardIncompleteDisk = true;
         Assert.IsTrue(await wizard.CreateAsync());
         Assert.IsNotNull(wizard.CreatedMachine);
+        Assert.AreEqual(NetworkMode.User, wizard.CreatedMachine.Configuration.Network);
         Assert.IsFalse(await wizard.CreateAsync());
         Assert.AreEqual(1, service.Calls);
+    }
+
+    [TestMethod]
+    public async Task DisabledNetworkIsATrackedChoiceAndReachesTheConfiguration() {
+        var wizard = Create(new TestCreation());
+        Assert.IsFalse(wizard.HasChanges);
+        wizard.NetworkEnabled = false;
+        Assert.IsTrue(wizard.HasChanges);
+        wizard = Ready(new TestCreation());
+        wizard.NetworkEnabled = false;
+        StringAssert.Contains(wizard.Summary, "Network: Disabled");
+        Assert.IsTrue(await wizard.CreateAsync());
+        Assert.AreEqual(NetworkMode.None, wizard.CreatedMachine!.Configuration.Network);
     }
 
     [TestMethod]

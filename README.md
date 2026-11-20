@@ -5,8 +5,8 @@ M0 feasibility is accepted; M1 provides the native application foundation.
 M2 adds a persistent VM metadata library and editor; M3 adds a creation wizard with
 read-only installation media and a managed qcow2 disk. M4 adds owned QEMU sessions,
 pause/resume and shutdown controls. The first M5 increment adds an integrated native
-guest console; networking and the complete Linux installation workflow remain
-in progress in [PLAN.md](PLAN.md).
+guest console, the second adds optional user-mode NAT networking; guest-level connectivity
+and the complete Linux installation workflow remain to be verified, see [PLAN.md](PLAN.md).
 
 ## Development
 
@@ -57,7 +57,8 @@ Structured ILogger output currently goes to the debugger; persistent bounded log
 Open the toolbar's **Library actions** menu and choose **Add metadata** to save a name,
 CPU count, memory and explicit WHPX/TCG selection. Select a sidebar entry to inspect it;
 use the **VM settings** toolbar button to edit **Information** and **System**.
-**Drives**, **Network** and **Display** currently show read-only information.
+**Network** switches between disabled and shared (NAT) networking while the VM is stopped.
+**Drives** and **Display** currently show read-only information.
 These entries describe the x86_64 Linux BIOS profile; they do
 not contain a bootable guest yet. WHPX selection does not enable Windows features or assert
 host availability. Machine alias `pc` is metadata only; a qualified versioned machine and
@@ -131,8 +132,8 @@ has a 30-second deadline and bounded output; uncertain cleanup retains the disk 
 deleting a file a process might still use. Library creation remains serialized by its file lock.
 
 Creation prepares disk/configuration/library registration. Use the library Run action
-to launch it; network configuration remains disabled. Integrated NAT/console qualification
-and the complete installation/reboot workflow belong to M5.
+to launch it. The hardware step enables shared (NAT) networking by default; switch it off
+for an isolated guest. The complete installation/reboot workflow is still an open M5 gate.
 
 ## Run and control a VM
 
@@ -145,7 +146,18 @@ The launch profile pins `pc-i440fx-9.2`, BIOS, virtio qcow2 storage and optional
 IDE installation media. **Boot the configured installation ISO once** starts the installer;
 clear it to boot an installed disk. No disk is converted, reset or deleted on start.
 Only one owned writable qcow2 and optionally one external ISO are currently supported.
-Networking remains disabled. The current Windows system binary cannot open non-ASCII
+
+Shared networking uses QEMU's user-mode NAT with a virtio network card and a stable per-VM
+MAC address derived from the VM ID. It needs no administrator rights, driver, bridge or
+firewall change. The guest gets DHCP/DNS from QEMU and outbound access through the host;
+it is not reachable from the network, and no port forwarding, SMB or TFTP is configured.
+NAT is not a sandbox: the guest can reach services listening on this PC through the virtual
+gateway. ICMP ping to the internet generally does not work in this mode. Entries created
+before this change keep networking disabled until it is enabled in **VM settings → Network**.
+QEMU accepts the network profile under WHPX and TCG; DHCP/DNS/outbound traffic inside a
+guest has not been verified yet.
+
+The current Windows system binary cannot open non-ASCII
 resource paths: library, ISO and QEMU installation paths must be ASCII-only. Creation's
 broader path support does not imply runtime compatibility; files are never relocated automatically.
 

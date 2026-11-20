@@ -94,6 +94,12 @@ public sealed class QemuBackend : IVmBackend {
             throw new ConfigurationException("The qualified Windows QEMU system build cannot open non-ASCII resource paths. Use an ASCII-only library, ISO and QEMU installation path; no files were moved or modified.");
     }
 
+    // Stable per-VM address in QEMU's locally administered 52:54:00 range; no schema field is required.
+    internal static string GuestMacAddress(Guid id) {
+        byte[] bytes = id.ToByteArray();
+        return FormattableString.Invariant($"52:54:00:{bytes[0]:x2}:{bytes[1]:x2}:{bytes[2]:x2}");
+    }
+
     internal static string[] BuildArguments(IVmExecutionLease lease, VmStartOptions options) {
         if (options.IntegratedDisplay && options.ExternalDisplay)
             throw new ConfigurationException("Choose either the integrated console or an external display.");
@@ -108,10 +114,16 @@ public sealed class QemuBackend : IVmBackend {
         var arguments = new List<string> {
             "-machine", QualifiedMachine, "-accel", configuration.ExecutionMode == ExecutionMode.Whpx ? "whpx" : "tcg",
             "-m", configuration.MemoryMiB.ToString(CultureInfo.InvariantCulture), "-smp", configuration.CpuCount.ToString(CultureInfo.InvariantCulture),
-            "-S", "-display", options.ExternalDisplay ? "sdl" : "none", "-monitor", "none", "-qmp", "stdio", "-nic", "none",
+            "-S", "-display", options.ExternalDisplay ? "sdl" : "none", "-monitor", "none", "-qmp", "stdio",
             "-serial", "none", "-parallel", "none", "-no-shutdown", "-name", configuration.Name.Replace(",", ",,", StringComparison.Ordinal),
             "-blockdev", BlockDevice("systemdisk", disk.FullPath, "qcow2", false), "-device", "virtio-blk-pci,drive=systemdisk"
         };
+        // User-mode NAT only: no host forwarding, SMB or TFTP. The guest can still reach host services through the NAT gateway.
+        arguments.AddRange(configuration.Network switch {
+            NetworkMode.None => ["-nic", "none"],
+            NetworkMode.User => ["-netdev", "user,id=guestnet", "-device", "virtio-net-pci,netdev=guestnet,mac=" + GuestMacAddress(configuration.Id)],
+            _ => throw new ConfigurationException("Unsupported network mode.")
+        });
         var iso = lease.Resources.FirstOrDefault(resource => resource.Configuration.Format == DiskFormat.Iso);
         if (iso is not null) {
             arguments.AddRange(["-blockdev", BlockDevice("installation", iso.FullPath, "raw", true), "-device", "ide-cd,drive=installation,bus=ide.1"]);

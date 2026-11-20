@@ -36,6 +36,10 @@ public sealed partial class CreationWizardViewModel : ObservableObject {
         get; set;
     }
     [ObservableProperty]
+    public partial bool NetworkEnabled {
+        get; set;
+    }
+    [ObservableProperty]
     public partial double DiskSizeGiB {
         get; set;
     }
@@ -79,6 +83,7 @@ public sealed partial class CreationWizardViewModel : ObservableObject {
         CpuCount = 2;
         MemoryMiB = 2048;
         DiskSizeGiB = 32;
+        NetworkEnabled = true;
         IsoPath = "";
         QemuImgPath = _originalToolPath;
         Status = "";
@@ -103,8 +108,8 @@ public sealed partial class CreationWizardViewModel : ObservableObject {
     public bool IsReviewStep => Step == 5;
     public bool CanEdit => !IsCreating;
     public string StepTitle => Step switch { 0 => "Start", 1 => "Operating System", 2 => "Linux", 3 => "Hardware", 4 => "Storage", _ => "Summary" };
-    public string Summary => $"{Name}\nLinux x86_64 · BIOS\n{CpuCount} CPUs · {MemoryMiB} MiB · {((ExecutionMode)ExecutionModeIndex).ToString().ToUpperInvariant()}\n{DiskSizeGiB} GiB sparse qcow2 disk\nISO: {IsoPath}\nThe ISO stays at its current location and is read-only. The disk grows as the guest writes data; sufficient free space is still required for future use.";
-    public bool HasChanges => Name != "" || CpuCount != 2 || MemoryMiB != 2048 || ExecutionModeIndex != 0 || DiskSizeGiB != 32 ||
+    public string Summary => $"{Name}\nLinux x86_64 · BIOS\n{CpuCount} CPUs · {MemoryMiB} MiB · {((ExecutionMode)ExecutionModeIndex).ToString().ToUpperInvariant()}\n{DiskSizeGiB} GiB sparse qcow2 disk\nNetwork: {(NetworkEnabled ? "Shared network (NAT)" : "Disabled")}\nISO: {IsoPath}\nThe ISO stays at its current location and is read-only. The disk grows as the guest writes data; sufficient free space is still required for future use.";
+    public bool HasChanges => Name != "" || CpuCount != 2 || MemoryMiB != 2048 || ExecutionModeIndex != 0 || DiskSizeGiB != 32 || !NetworkEnabled ||
         IsoPath != "" || QemuImgPath != _originalToolPath || DiscardIncompleteDisk;
 
     partial void OnIsCreatingChanged(bool value) {
@@ -182,7 +187,8 @@ public sealed partial class CreationWizardViewModel : ObservableObject {
             Id = _id,
             CpuCount = (int)CpuCount,
             MemoryMiB = (int)MemoryMiB,
-            ExecutionMode = (ExecutionMode)ExecutionModeIndex
+            ExecutionMode = (ExecutionMode)ExecutionModeIndex,
+            Network = NetworkEnabled ? NetworkMode.User : NetworkMode.None
         };
         var issues = ConfigurationValidator.Validate(configuration);
         if (issues.Count == 0)

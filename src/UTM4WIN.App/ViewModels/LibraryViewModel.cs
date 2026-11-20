@@ -23,7 +23,7 @@ public sealed record VmListItem(VmSnapshot Snapshot, string ResourceIssue = "") 
     public string CpuLabel => $"{Snapshot.Configuration.CpuCount} virtual CPUs";
     public string StatusLabel => ResourceIssue.Length != 0 ? "Needs attention" : Snapshot.Configuration.Storage.IsEmpty ? "Metadata only" : "Configured";
     public string StorageLabel => Snapshot.Configuration.Storage.IsEmpty ? "No drives configured" : $"{Snapshot.Configuration.Storage.Length} drives";
-    public string NetworkLabel => Snapshot.Configuration.Network == NetworkMode.None ? "Disabled" : "User-mode networking";
+    public string NetworkLabel => Snapshot.Configuration.Network == NetworkMode.None ? "Disabled" : "Shared network (NAT)";
     public IReadOnlyList<StorageResource> Storage => Snapshot.Configuration.Storage;
 }
 

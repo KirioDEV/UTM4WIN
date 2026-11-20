@@ -22,6 +22,19 @@ public sealed class LibraryViewModelTests {
     }
 
     [TestMethod]
+    public void EditorTracksNetworkModeAndRejectsUndefinedValues() {
+        var snapshot = new VmSnapshot(VmConfiguration.CreateMetadata("Original"), "revision");
+        var editor = new MetadataEditorViewModel(snapshot);
+        Assert.IsFalse(editor.HasChanges);
+        editor.NetworkModeIndex = (int)NetworkMode.User;
+        Assert.IsTrue(editor.HasChanges);
+        Assert.AreEqual(NetworkMode.User, editor.Validate()!.Network);
+        editor.NetworkModeIndex = -1;
+        Assert.IsNull(editor.Validate());
+        Assert.AreEqual(NetworkMode.None, snapshot.Configuration.Network);
+    }
+
+    [TestMethod]
     public async Task SavingConflictLeavesDraftAndMessageAvailableToDialog() {
         var snapshot = new VmSnapshot(VmConfiguration.CreateMetadata("Original"), "revision");
         var dialogs = new TestDialogs {
