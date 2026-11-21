@@ -15,7 +15,8 @@ internal sealed class QmpClient {
     public Task ReaderCompletion {
         get;
     }
-    public event Action<string>? EventReceived;
+    // Event name and its cloned "data" member (Undefined when absent).
+    public event Action<string, JsonElement>? EventReceived;
 
     public QmpClient(TextReader reader, TextWriter writer) {
         _reader = reader;
@@ -90,7 +91,7 @@ internal sealed class QmpClient {
             if (!_greeting.TrySetResult(greeting.Clone()))
                 throw new IOException("Duplicate QMP greeting.");
         } else if (root.TryGetProperty("event", out var eventName)) {
-            EventReceived?.Invoke(eventName.GetString()!);
+            EventReceived?.Invoke(eventName.GetString()!, root.TryGetProperty("data", out var data) ? data.Clone() : default);
         } else if (root.TryGetProperty("id", out var idElement)) {
             if (idElement.ValueKind != JsonValueKind.Number || !idElement.TryGetInt64(out long id) || !_pending.TryRemove(id, out var response))
                 return; // Late/unknown replies are never replayed.

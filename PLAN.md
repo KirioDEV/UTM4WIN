@@ -1,6 +1,6 @@
 # UTM4WIN Architecture and Development Plan
 
-Status: M0 accepted for the qualified Windows 11 x64/100%-scaled profile; M1–M4 completed for the qualified host/profile following their respective user instructions. M5 is in progress: the first increment replaces the interim SDL window with an integrated native guest console (section 35). The second increment adds optional user-mode NAT networking (section 36). Eighty-two ordinary tests and six explicit QEMU integration tests pass. The user confirmed physical input and monitor movement; the console observed 100% and 125% scaling. Guest-level NAT connectivity and the complete installed-Linux workflow remain M5 acceptance gates. M6–M8 are not started; production release and QEMU redistribution remain unapproved.
+Status: M0 accepted for the qualified Windows 11 x64/100%-scaled profile; M1–M4 completed for the qualified host/profile following their respective user instructions. M5 is in progress: the first increment replaces the interim SDL window with an integrated native guest console (section 35). The second increment adds optional user-mode NAT networking (section 36). The third restarts a rebooting guest in a new QEMU process because an in-process warm reset fails under WHPX, and faults unrequested pauses (section 37). Eighty-seven ordinary tests and seven explicit QEMU integration tests pass, including an unattended NAT install/reboot/restart run. The user confirmed physical input and monitor movement; the console observed 100% and 125% scaling. The manual installed-Linux workflow through the application UI remains an M5 acceptance gate. M6–M8 are not started; production release and QEMU redistribution remain unapproved.
 Evidence reviewed: 2026-10-14. Continuation after UI alignment authorizes M4 lifecycle/control. Already approved QEMU tools, Debian ISO and a new copy of the earlier disposable test guest were reused. Additional dependencies/media and system changes require their own authorization; the integrated console remains the next milestone.
 
 ## 1. Product goal and scope
@@ -1145,3 +1145,28 @@ CLI build reports zero warnings/errors and locked restore succeeds. Eighty-two o
 Not verified: DHCP, DNS and outbound traffic inside a guest. The retained disposable guest has no NIC configuration or usable login, and the installer was not driven automatically. No native UI automation or visual capture was run for the new switch and combo box; they compile and their view models are tested. Rider's own build was not rerun for this increment.
 
 M5 remains in progress. Remaining gate: the complete create → install (with network) → reboot → pause/resume → shutdown → app restart → start workflow through the application on a disposable guest, which also supplies the guest-level NAT evidence. Changes remain unstaged/uncommitted; reference material and existing media are unchanged.
+
+## 37. M5 third increment: guest reboot as process restart
+
+Date: 2026-11-21. The user's continuation ran the pending unattended NAT installation test, and after the defect below the user selected the process-restart remedy. This section records that increment, not completion of the Linux MVP milestone.
+
+### Finding
+
+The first run of the unattended installation test installed Debian over NAT (preseed from the host gateway, `outbound=ok` to `deb.debian.org`) but never reported its first boot; the console froze at "Welcome to GRUB!". A standalone diagnostic outside the repository reproduced it with the production arguments: the installer's reboot produced QEMU's `Unimplemented handler … for POPA` and `WHPX: Unexpected VP exit code 4`, after which `query-status` reported `paused`. Cold boots of the same freshly installed disk reached the login prompt under WHPX and TCG, with and without the virtio NIC/iPXE ROM. A QMP `system_reset` of a booted guest reproduced the stop under WHPX with `pc-i440fx-9.2` and `q35`, one or two vCPUs, and both the new guest and the M0 guest; TCG reset correctly. Earlier milestones never exercised an in-process warm reset because every boot was a new process. This is an observation of the qualified QEMU 11.1.0 build on this host, not an audited root cause.
+
+### Decision and behavior
+
+- QEMU additionally runs with `-no-reboot` (`-action reboot=shutdown`); with the existing `-no-shutdown`, a guest reset becomes a `SHUTDOWN` event with reason `guest-reset` followed by `STOP`, verified against Context7/QMP reference documentation. [QEMU invocation](https://www.qemu.org/docs/master/system/invocation.html), [QMP reference](https://www.qemu.org/docs/master/interop/qemu-qmp-ref.html).
+- The QMP client passes event data; the backend session exposes the latest `SHUTDOWN` reason. On `guest-reset` without a pending shutdown request, the session service quits the halted process (force-stopping it after five seconds if necessary), keeps the execution lease and starts a new process with the stored start options minus installation-media boot. A failed restart follows ordinary startup cleanup. Four consecutive resets each within fifteen seconds stop the VM as faulted and release it. A reset while Shut down is pending ends the VM.
+- QEMU reporting `paused` while the session is Running (no Pause requested) is published as a sticky Faulted state that retains ownership; Resume is rejected and Force stop releases it.
+- An open console window is replaced with one bound to the new display; a closed console is not reopened.
+
+Costs: a guest reboot re-runs firmware in a new process and briefly shows Starting; QMP state and the display connection are new. Guest-panic handling and host-requested reset remain unimplemented.
+
+### Executed verification
+
+The change was developed and verified in a copy of the working tree outside the repository and delivered as a patch. CLI build: zero warnings/errors. Eighty-seven ordinary tests pass; new coverage: event data/reason parsing, `-no-reboot`/`-no-shutdown` arguments, restart into a new session without installation media while keeping the lease and display option, unrequested guest power-off, reset during requested shutdown, rapid reset loop and sticky unrequested pause. All seven explicit QEMU integration tests pass with the approved binary, including `CreateInstallRebootPauseShutdownAndRestartPersistedGuestOverNat` under WHPX (about 2.5 minutes): install over NAT, reboot into a new QEMU process with a new display, first-boot report with active acpid, pause/resume, ACPI shutdown, simulated application restart over the persisted library and second boot report. Evidence capture: `%LOCALAPPDATA%/UTM4WIN/M5/network-install-20261121-013705/`. No owned QEMU process remained.
+
+Not verified: the WinUI console replacement after a reboot (compiled, not exercised natively), a reboot requested from inside an installed guest through the UI, TCG installation, and Rider's own build.
+
+M5 remains in progress. Remaining gate: the manual create → install → reboot → pause/resume → shutdown → app restart → start workflow through the application UI on a disposable guest, including the console's behavior across the reboot. Changes remain unstaged/uncommitted; reference material and existing media are unchanged.

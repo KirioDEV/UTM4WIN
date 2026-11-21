@@ -115,7 +115,9 @@ public sealed class QemuBackend : IVmBackend {
             "-machine", QualifiedMachine, "-accel", configuration.ExecutionMode == ExecutionMode.Whpx ? "whpx" : "tcg",
             "-m", configuration.MemoryMiB.ToString(CultureInfo.InvariantCulture), "-smp", configuration.CpuCount.ToString(CultureInfo.InvariantCulture),
             "-S", "-display", options.ExternalDisplay ? "sdl" : "none", "-monitor", "none", "-qmp", "stdio",
-            "-serial", "none", "-parallel", "none", "-no-shutdown", "-name", configuration.Name.Replace(",", ",,", StringComparison.Ordinal),
+            // -no-reboot turns a guest reset into a paused SHUTDOWN (reason guest-reset). The session restarts the guest in a
+            // new process because an in-process warm reset stops the virtual CPUs under WHPX with the qualified build.
+            "-serial", "none", "-parallel", "none", "-no-shutdown", "-no-reboot", "-name", configuration.Name.Replace(",", ",,", StringComparison.Ordinal),
             "-blockdev", BlockDevice("systemdisk", disk.FullPath, "qcow2", false), "-device", "virtio-blk-pci,drive=systemdisk"
         };
         // User-mode NAT only: no host forwarding, SMB or TFTP. The guest can still reach host services through the NAT gateway.
@@ -143,7 +145,9 @@ public sealed class QemuBackend : IVmBackend {
         private bool _disposed;
         private readonly DisplayMaterial? _displayMaterial;
         private readonly VncDisplaySession? _display;
+        private string? _shutdownReason;
         public IVmDisplaySession? Display => _display;
+        public string? ShutdownReason => Volatile.Read(ref _shutdownReason);
         public uint ProcessId => _child.ProcessId;
         public Task<uint> Completion {
             get;
@@ -162,6 +166,11 @@ public sealed class QemuBackend : IVmBackend {
             if (displayMaterial is not null)
                 _display = new(displayMaterial);
             _qmp = new(child.Output, child.Input);
+            // The reader dispatches events in stream order, so the reason is recorded before a later query-status reports "shutdown".
+            _qmp.EventReceived += (name, data) => {
+                if (name == "SHUTDOWN" && data.ValueKind == JsonValueKind.Object && data.TryGetProperty("reason", out var reason) && reason.ValueKind == JsonValueKind.String)
+                    Volatile.Write(ref _shutdownReason, reason.GetString());
+            };
             _diagnostics = Task.Run(async () => {
                 char[] buffer = new char[2048];
                 try {

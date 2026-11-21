@@ -59,6 +59,8 @@ public sealed class ExecutionLeaseTests {
         Assert.AreEqual(@"C:\safe, folder\雪.qcow2", disk.RootElement.GetProperty("file").GetProperty("filename").GetString());
         Assert.IsFalse(arguments.Contains("-vnc"));
         CollectionAssert.Contains(arguments, "stdio");
+        CollectionAssert.Contains(arguments, "-no-shutdown");
+        CollectionAssert.Contains(arguments, "-no-reboot");
         Assert.AreEqual("none", arguments[Array.IndexOf(arguments, "-nic") + 1]);
         Assert.IsFalse(arguments.Contains("-netdev"));
         using var networked = new ArgumentLease(configuration with {

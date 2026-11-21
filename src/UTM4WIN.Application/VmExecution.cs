@@ -35,6 +35,8 @@ public interface IVmBackend {
 
 public interface IVmBackendSession : IAsyncDisposable {
     IVmDisplaySession? Display => null;
+    // QMP ShutdownCause of the most recent SHUTDOWN event, e.g. "guest-reset" or "guest-shutdown"; null if none was observed.
+    string? ShutdownReason => null;
     uint ProcessId {
         get;
     }

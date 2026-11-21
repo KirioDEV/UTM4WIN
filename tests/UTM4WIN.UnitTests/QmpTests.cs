@@ -13,18 +13,24 @@ public sealed class QmpTests {
         var writer = new FeedWriter();
         var client = new QmpClient(reader, writer);
         int events = 0;
-        client.EventReceived += _ => events++;
+        string reason = "";
+        client.EventReceived += (name, data) => {
+            events++;
+            if (name == "SHUTDOWN")
+                reason = data.GetProperty("reason").GetString()!;
+        };
         writer.OnCommand = json => {
             using var command = JsonDocument.Parse(json);
             long id = command.RootElement.GetProperty("id").GetInt64();
-            reader.Add("{\"event\":\"STOP\"}\r\n{\"id\":9876,\"return\":{}}\r\n{\"id\":\"unknown\",\"return\":{}}\r\n");
+            reader.Add("{\"event\":\"SHUTDOWN\",\"data\":{\"guest\":true,\"reason\":\"guest-reset\"}}\r\n{\"event\":\"STOP\"}\r\n{\"id\":9876,\"return\":{}}\r\n{\"id\":\"unknown\",\"return\":{}}\r\n");
             reader.Add($"{{\"id\":{id},\"return\":{{\"status\":\"running\"}}}}\r\n");
         };
         reader.Add("{\"Q");
         reader.Add("MP\":{\"version\":{\"qemu\":{\"major\":11,\"minor\":1}},\"capabilities\":[]}}\r\n");
         await client.NegotiateAsync(CancellationToken.None);
         Assert.AreEqual("running", (await client.ExecuteAsync("query-status", CancellationToken.None)).GetProperty("status").GetString());
-        Assert.AreEqual(2, events);
+        Assert.AreEqual(4, events);
+        Assert.AreEqual("guest-reset", reason);
         reader.End();
         await client.ReaderCompletion;
     }

@@ -109,6 +109,98 @@ public sealed class SessionTests {
         Assert.IsTrue(lease.Disposed);
     }
 
+    [TestMethod]
+    public async Task GuestResetRestartsInNewProcessWithoutInstallationMediaAndKeepsLease() {
+        var lease = new Lease();
+        var backend = new Backend();
+        await using var service = new VmSessionService(lease, backend);
+        Guid id = lease.Snapshot.Configuration.Id;
+        await service.StartAsync(lease.Snapshot, new("unused", false, true, true));
+        var first = backend.Session;
+        first.ShutdownReason = "guest-reset";
+        first.State = "shutdown";
+        await WaitAsync(() => backend.Starts.Count == 2 && service.Get(id).State == VmSessionState.Running);
+        Assert.IsTrue(first.Completion.IsCompleted);
+        Assert.AreNotSame(first, backend.Session);
+        Assert.IsFalse(backend.Starts[1].BootInstallationMedia);
+        Assert.IsTrue(backend.Starts[1].IntegratedDisplay);
+        Assert.IsTrue(service.Get(id).OwnsResources);
+        Assert.IsFalse(lease.Disposed);
+        Assert.AreEqual("", service.Get(id).Error);
+    }
+
+    [TestMethod]
+    public async Task GuestPowerOffWithoutRequestStopsAndReleases() {
+        var lease = new Lease();
+        var backend = new Backend();
+        await using var service = new VmSessionService(lease, backend);
+        Guid id = lease.Snapshot.Configuration.Id;
+        await service.StartAsync(lease.Snapshot, new("unused"));
+        backend.Session.ShutdownReason = "guest-shutdown";
+        backend.Session.State = "shutdown";
+        await WaitAsync(() => !service.Get(id).OwnsResources);
+        Assert.AreEqual(VmSessionState.Stopped, service.Get(id).State);
+        Assert.AreEqual(1, backend.Starts.Count);
+        Assert.IsTrue(lease.Disposed);
+    }
+
+    [TestMethod]
+    public async Task RequestedShutdownIsNotTurnedIntoRestartByGuestReset() {
+        var lease = new Lease();
+        var backend = new Backend();
+        await using var service = new VmSessionService(lease, backend);
+        Guid id = lease.Snapshot.Configuration.Id;
+        await service.StartAsync(lease.Snapshot, new("unused"));
+        await service.ControlAsync(id, VmControl.Shutdown);
+        backend.Session.ShutdownReason = "guest-reset";
+        backend.Session.State = "shutdown";
+        await WaitAsync(() => !service.Get(id).OwnsResources);
+        Assert.AreEqual(VmSessionState.Stopped, service.Get(id).State);
+        Assert.AreEqual(1, backend.Starts.Count);
+    }
+
+    [TestMethod]
+    public async Task RapidResetLoopIsStoppedAsFaulted() {
+        var lease = new Lease();
+        var backend = new Backend();
+        await using var service = new VmSessionService(lease, backend);
+        Guid id = lease.Snapshot.Configuration.Id;
+        await service.StartAsync(lease.Snapshot, new("unused"));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        while (service.Get(id).State != VmSessionState.Faulted) {
+            var current = backend.Session;
+            if (current.State == "running") {
+                current.ShutdownReason = "guest-reset";
+                current.State = "shutdown";
+            }
+            await Task.Delay(20, timeout.Token);
+        }
+        StringAssert.Contains(service.Get(id).Error, "restarted repeatedly");
+        Assert.AreEqual(4, backend.Starts.Count);
+        Assert.IsFalse(service.Get(id).OwnsResources);
+        Assert.IsTrue(lease.Disposed);
+        Assert.IsTrue(backend.Session.Completion.IsCompleted);
+    }
+
+    [TestMethod]
+    public async Task UnrequestedPauseIsFaultedRetainsOwnershipAndRejectsResume() {
+        var lease = new Lease();
+        var backend = new Backend();
+        await using var service = new VmSessionService(lease, backend);
+        Guid id = lease.Snapshot.Configuration.Id;
+        await service.StartAsync(lease.Snapshot, new("unused"));
+        backend.Session.State = "paused";
+        await WaitAsync(() => service.Get(id).State == VmSessionState.Faulted);
+        await Task.Delay(1200); // Further monitor reconciliations must not report a resumable pause.
+        Assert.AreEqual(VmSessionState.Faulted, service.Get(id).State);
+        StringAssert.Contains(service.Get(id).Error, "unexpectedly");
+        Assert.IsTrue(service.Get(id).OwnsResources);
+        await Assert.ThrowsAsync<ConfigurationConflictException>(() => service.ControlAsync(id, VmControl.Resume));
+        await service.ForceStopAsync(id);
+        Assert.IsTrue(lease.Disposed);
+        Assert.IsFalse(service.Get(id).OwnsResources);
+    }
+
     private static async Task WaitAsync(Func<bool> condition) {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         while (!condition())
@@ -129,18 +221,26 @@ public sealed class SessionTests {
         }
     }
     private sealed class Backend : IVmBackend {
-        public readonly Session Session = new();
+        // The most recently started session; each start after the first creates a new one, like a new QEMU process.
+        public volatile Session Session = new();
+        public readonly List<VmStartOptions> Starts = [];
         public bool FailStart, UncertainStart;
         public Task<IVmBackendSession> StartAsync(IVmExecutionLease lease, VmStartOptions options, CancellationToken cancellationToken) {
             if (FailStart)
                 throw new OperationCanceledException();
             if (UncertainStart)
                 throw new VmCleanupException("Injected uncertain cleanup");
+            lock (Starts) {
+                if (Starts.Count > 0)
+                    Session = new();
+                Starts.Add(options);
+            }
             return Task.FromResult<IVmBackendSession>(Session);
         }
     }
     private sealed class Session : IVmBackendSession {
-        public string State = "running";
+        public volatile string State = "running";
+        public string? ShutdownReason { get; set; }
         public bool Disconnected;
         public bool CancelAfterControl;
         public readonly TaskCompletionSource<uint> Exit = new(TaskCreationOptions.RunContinuationsAsynchronously);

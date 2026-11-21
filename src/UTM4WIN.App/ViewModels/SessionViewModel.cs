@@ -17,6 +17,10 @@ public sealed partial class SessionViewModel : ObservableObject {
     public Action<VmSnapshot, IVmDisplaySession>? ShowConsole {
         get; set;
     }
+    // Moves an already open console to a new display, e.g. after a guest reboot restarted QEMU. Does not open a closed console.
+    public Action<VmSnapshot, IVmDisplaySession>? ReplaceConsole {
+        get; set;
+    }
     public IRelayCommand OpenConsoleCommand {
         get;
     }
@@ -77,7 +81,12 @@ public sealed partial class SessionViewModel : ObservableObject {
             if (args.PropertyName is nameof(LibraryViewModel.SelectedMachine) or nameof(LibraryViewModel.IsBusy))
                 Refresh();
         };
-        sessions.Changed += status => Dispatch(() => { logger.LogInformation("VM {VmId}: {State}, owns resources: {OwnsResources}", status.Id, status.State, status.OwnsResources); Refresh(); });
+        sessions.Changed += status => Dispatch(() => {
+            logger.LogInformation("VM {VmId}: {State}, owns resources: {OwnsResources}", status.Id, status.State, status.OwnsResources);
+            Refresh();
+            if (status.State == VmSessionState.Running && sessions.GetDisplay(status.Id) is { } display && library.Machines.FirstOrDefault(machine => machine.Snapshot.Configuration.Id == status.Id) is { } item)
+                ReplaceConsole?.Invoke(item.Snapshot, display);
+        });
     }
 
     private VmSessionStatus Current => _library.SelectedMachine is { } machine ? _sessions.Get(machine.Snapshot.Configuration.Id) : new(Guid.Empty, VmSessionState.Stopped, false);

@@ -45,6 +45,10 @@ public sealed partial class MainWindow : Window {
             }
             console.Activate();
         };
+        Session.ReplaceConsole = (snapshot, display) => {
+            if (_consoles.TryGetValue(snapshot.Configuration.Id, out var previous) && !ReferenceEquals(previous.Display, display))
+                Session.ShowConsole?.Invoke(snapshot, display);
+        };
         AppWindow.Resize(new SizeInt32(1100, 760));
         Root.Loaded += async (_, _) => {
             ApplyTitleBarTheme();

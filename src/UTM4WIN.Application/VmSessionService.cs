@@ -12,7 +12,13 @@ public sealed class VmSessionService(IVmExecutionLeaseProvider leases, IVmBacken
         public bool ExpectedExit;
         public DateTimeOffset? ShutdownRequested;
         public string LastDiagnostics = "";
+        public VmStartOptions? Options;
+        public bool Halted;
+        public DateTimeOffset LastRestart;
+        public int RapidRestarts;
     }
+    private static readonly TimeSpan RapidRestartWindow = TimeSpan.FromSeconds(15);
+    private const int MaximumRapidRestarts = 3;
     private readonly ConcurrentDictionary<Guid, Entry> _entries = new();
     private bool _disposed;
     public event Action<VmSessionStatus>? Changed;
@@ -41,35 +47,85 @@ public sealed class VmSessionService(IVmExecutionLeaseProvider leases, IVmBacken
             entry.ExpectedExit = false;
             entry.ShutdownRequested = null;
             entry.LastDiagnostics = "";
+            entry.Options = options;
+            entry.Halted = false;
+            entry.RapidRestarts = 0;
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             deadline.CancelAfter(TimeSpan.FromSeconds(30));
             try {
                 entry.Lease = await leases.AcquireAsync(snapshot, deadline.Token).ConfigureAwait(false);
                 Publish(entry, VmSessionState.Starting);
-                entry.Backend = await backend.StartAsync(entry.Lease, options, deadline.Token).ConfigureAwait(false);
-                deadline.Token.ThrowIfCancellationRequested();
-                string state = await entry.Backend.QueryStatusAsync(deadline.Token).ConfigureAwait(false);
-                if (state != "running")
-                    throw new IOException("QEMU did not confirm a running virtual CPU.");
-                Publish(entry, VmSessionState.Running);
-                var started = entry.Backend;
-                entry.Monitor = Task.Run(() => MonitorAsync(entry, started));
+                await LaunchAsync(entry, options, deadline.Token).ConfigureAwait(false);
             } catch (Exception error) {
-                bool uncertain = error is VmCleanupException;
-                if (entry.Backend is not null) {
-                    try {
-                        await entry.Backend.ForceStopAsync(CancellationToken.None).ConfigureAwait(false);
-                        await ReleaseAsync(entry).ConfigureAwait(false);
-                    } catch (Exception cleanup) { uncertain = true; error = new VmCleanupException($"{error.Message} Cleanup: {cleanup.Message}"); }
-                }
-                if (!uncertain) {
-                    entry.Lease?.Dispose();
-                    entry.Lease = null;
-                }
-                Publish(entry, error is OperationCanceledException && !uncertain ? VmSessionState.Stopped : VmSessionState.Faulted, error.Message);
+                await CleanUpFailedLaunchAsync(entry, error).ConfigureAwait(false);
                 throw;
             }
         } finally { entry.Gate.Release(); }
+    }
+
+    // Requires the entry gate and an acquired lease.
+    private async Task LaunchAsync(Entry entry, VmStartOptions options, CancellationToken cancellationToken) {
+        entry.Backend = await backend.StartAsync(entry.Lease!, options, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        string state = await entry.Backend.QueryStatusAsync(cancellationToken).ConfigureAwait(false);
+        if (state != "running")
+            throw new IOException("QEMU did not confirm a running virtual CPU.");
+        Publish(entry, VmSessionState.Running);
+        var started = entry.Backend;
+        entry.Monitor = Task.Run(() => MonitorAsync(entry, started));
+    }
+
+    private async Task CleanUpFailedLaunchAsync(Entry entry, Exception error) {
+        bool uncertain = error is VmCleanupException;
+        if (entry.Backend is not null) {
+            try {
+                await entry.Backend.ForceStopAsync(CancellationToken.None).ConfigureAwait(false);
+                await ReleaseAsync(entry).ConfigureAwait(false);
+            } catch (Exception cleanup) { uncertain = true; error = new VmCleanupException($"{error.Message} Cleanup: {cleanup.Message}"); }
+        }
+        if (!uncertain) {
+            entry.Lease?.Dispose();
+            entry.Lease = null;
+        }
+        Publish(entry, error is OperationCanceledException && !uncertain ? VmSessionState.Stopped : VmSessionState.Faulted, error.Message);
+    }
+
+    // A guest reboot arrives as a paused SHUTDOWN with reason guest-reset (QEMU runs with -no-reboot). The guest is
+    // restarted as a new process that keeps the lease, so files stay owned and installation media is not booted again.
+    private async Task RestartAsync(Entry entry) {
+        var previous = entry.Backend!;
+        var now = DateTimeOffset.UtcNow;
+        entry.RapidRestarts = now - entry.LastRestart < RapidRestartWindow ? entry.RapidRestarts + 1 : 0;
+        entry.LastRestart = now;
+        entry.ExpectedExit = true;
+        Publish(entry, VmSessionState.Starting);
+        try {
+            await previous.ExecuteAsync(VmControl.Quit, CancellationToken.None).ConfigureAwait(false);
+        } catch (IOException) { /* QMP quit may close the stream before replying. Process exit is required. */ }
+        try {
+            await previous.Completion.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+        } catch (TimeoutException) {
+            // The guest already requested its reset; terminating the halted process does not interrupt guest work.
+            await previous.ForceStopAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        uint code = await previous.Completion.ConfigureAwait(false);
+        await previous.DisposeAsync().ConfigureAwait(false);
+        entry.LastDiagnostics = previous.Diagnostics;
+        entry.Backend = null;
+        string failure = code != 0 ? $"QEMU exited with code {code} while restarting the guest. {entry.LastDiagnostics}"
+            : entry.RapidRestarts >= MaximumRapidRestarts ? "The guest restarted repeatedly within a few seconds and was stopped. Check the guest boot configuration."
+            : "";
+        if (failure.Length > 0) {
+            entry.Lease?.Dispose();
+            entry.Lease = null;
+            Publish(entry, VmSessionState.Faulted, failure);
+            return;
+        }
+        entry.ExpectedExit = false;
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        try {
+            await LaunchAsync(entry, entry.Options! with { BootInstallationMedia = false }, deadline.Token).ConfigureAwait(false);
+        } catch (Exception error) { await CleanUpFailedLaunchAsync(entry, new IOException("The guest requested a restart, but QEMU could not be started again: " + error.Message, error)).ConfigureAwait(false); }
     }
 
     public async Task ControlAsync(Guid id, VmControl control, CancellationToken cancellationToken = default) {
@@ -135,7 +191,9 @@ public sealed class VmSessionService(IVmExecutionLeaseProvider leases, IVmBacken
             return;
         }
         string state = await session.QueryStatusAsync(cancellationToken).ConfigureAwait(false);
-        if (state == "shutdown") {
+        if (state == "shutdown" && session.ShutdownReason == "guest-reset" && entry.ShutdownRequested is null && entry.Status.State != VmSessionState.Stopping) {
+            await RestartAsync(entry).ConfigureAwait(false);
+        } else if (state == "shutdown") {
             entry.ExpectedExit = true;
             Publish(entry, VmSessionState.Stopping);
             try {
@@ -145,6 +203,12 @@ public sealed class VmSessionService(IVmExecutionLeaseProvider leases, IVmBacken
             await FinishExitAsync(entry).ConfigureAwait(false);
         } else if (entry.Status.State == VmSessionState.Stopping && entry.ShutdownRequested is { } requested && DateTimeOffset.UtcNow - requested > TimeSpan.FromSeconds(30)) {
             Publish(entry, VmSessionState.Stopping, "The guest has not shut down after 30 seconds. Continue waiting, retry Shut down, or explicitly Force stop. Files remain owned.");
+        } else if (entry.Halted) {
+            // Remains faulted until the process exits or is force-stopped; QEMU's paused state is not resumable here.
+        } else if (state == "paused" && entry.Status.State == VmSessionState.Running) {
+            // No pause was requested: QEMU stopped the virtual CPUs itself, e.g. after an unhandled WHPX exit.
+            entry.Halted = true;
+            Publish(entry, VmSessionState.Faulted, "QEMU stopped the guest unexpectedly. The VM still owns its files; open Diagnostics for details and use Force stop to release them.");
         } else if (entry.Status.State != VmSessionState.Stopping) {
             Publish(entry, state switch {
                 "running" => VmSessionState.Running,

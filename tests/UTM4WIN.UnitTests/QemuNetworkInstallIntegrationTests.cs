@@ -42,6 +42,7 @@ public sealed class QemuNetworkInstallIntegrationTests {
                 await using var sessions = new VmSessionService(repository, new QemuBackend());
                 await sessions.StartAsync(snapshot, new(executable, false, true, true), deadline.Token);
                 var display = sessions.GetDisplay(id)!;
+                uint installerProcess = sessions.Get(id).ProcessId!.Value;
                 try {
                     // The Debian BIOS boot menu switches the firmware text mode to 640 × 480.
                     while (display.ReadFrame() is not { Width: 640, Height: 480 })
@@ -57,10 +58,14 @@ public sealed class QemuNetworkInstallIntegrationTests {
                     string firstBoot = await server.WaitAsync("/boot", TimeSpan.FromMinutes(5), deadline.Token);
                     StringAssert.Contains(firstBoot, "count=1&acpid=active");
                 } catch {
-                    Capture(display, "failure");
+                    Capture(sessions.GetDisplay(id) ?? display, "failure");
                     throw;
                 }
-                Capture(display, "installed-first-boot");
+                // The installer's reboot must arrive as guest-reset and continue in a new QEMU process (-no-reboot), not as an in-process reset.
+                var rebooted = sessions.GetDisplay(id)!;
+                Assert.AreNotSame(display, rebooted);
+                Assert.AreNotEqual(installerProcess, sessions.Get(id).ProcessId);
+                Capture(rebooted, "installed-first-boot");
                 Assert.AreEqual(VmSessionState.Running, sessions.Get(id).State);
                 await sessions.ControlAsync(id, VmControl.Pause, deadline.Token);
                 Assert.AreEqual(VmSessionState.Paused, sessions.Get(id).State);

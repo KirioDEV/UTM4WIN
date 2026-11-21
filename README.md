@@ -5,8 +5,8 @@ M0 feasibility is accepted; M1 provides the native application foundation.
 M2 adds a persistent VM metadata library and editor; M3 adds a creation wizard with
 read-only installation media and a managed qcow2 disk. M4 adds owned QEMU sessions,
 pause/resume and shutdown controls. The first M5 increment adds an integrated native
-guest console, the second adds optional user-mode NAT networking; guest-level connectivity
-and the complete Linux installation workflow remain to be verified, see [PLAN.md](PLAN.md).
+guest console, the second adds optional user-mode NAT networking, the third restarts a
+rebooting guest in a new QEMU process; remaining M5 gates are listed in [PLAN.md](PLAN.md).
 
 ## Development
 
@@ -133,7 +133,8 @@ deleting a file a process might still use. Library creation remains serialized b
 
 Creation prepares disk/configuration/library registration. Use the library Run action
 to launch it. The hardware step enables shared (NAT) networking by default; switch it off
-for an isolated guest. The complete installation/reboot workflow is still an open M5 gate.
+for an isolated guest. An unattended Debian install → reboot → shutdown → restart run passes
+as an explicit integration test; the manual workflow through the app is still an open M5 gate.
 
 ## Run and control a VM
 
@@ -154,8 +155,8 @@ it is not reachable from the network, and no port forwarding, SMB or TFTP is con
 NAT is not a sandbox: the guest can reach services listening on this PC through the virtual
 gateway. ICMP ping to the internet generally does not work in this mode. Entries created
 before this change keep networking disabled until it is enabled in **VM settings → Network**.
-QEMU accepts the network profile under WHPX and TCG; DHCP/DNS/outbound traffic inside a
-guest has not been verified yet.
+An unattended Debian 13.7 installation under WHPX obtained DHCP, fetched its preseed from
+the host gateway and reached `deb.debian.org`; other guests and networks are not qualified.
 
 The current Windows system binary cannot open non-ASCII
 resource paths: library, ISO and QEMU installation paths must be ASCII-only. Creation's
@@ -184,6 +185,15 @@ choose **Force stop** with explicit confirmation. Force stop can lose guest data
 the guest filesystem; it does not delete disk files. A lost control connection preserves
 ownership and offers force stop rather than allowing unsafe edits/restarts.
 
+A guest reboot does not reset the running QEMU process: with the qualified build, an in-process
+warm reset under WHPX stops the virtual CPUs (`WHPX: Unexpected VP exit code 4`). QEMU therefore
+runs with `-no-reboot`; when the guest requests a reset, the app ends that process and starts a
+new one from the installed disk, keeping file ownership. The installation ISO is not booted
+again, and an open console switches to the new display. Four consecutive resets, each within
+fifteen seconds of the previous one, stop the VM as faulted. A reset requested while **Shut down** is pending ends the VM.
+If QEMU pauses the guest without a Pause request, the VM is shown as faulted and keeps its
+files; use **QEMU diagnostics** and **Force stop**.
+
 Closing the app while VMs are active offers shutdown, cancellation or explicitly forced exit.
 There is no detached mode. Job ownership also terminates the child on parent-process failure.
 No persisted PID is used to find or kill processes. Startup cancellation waits for cleanup;
@@ -204,8 +214,16 @@ $env:UTM4WIN_TEST_QEMU_SYSTEM = 'C:\path\to\approved\qemu-system-x86_64.exe'
 $env:UTM4WIN_TEST_ISO = 'C:\path\to\approved\debian.iso'
 # Optional: an already qualified disposable BIOS guest, copied into a new test directory.
 $env:UTM4WIN_TEST_DISPOSABLE_GUEST = 'C:\path\to\disposable-test-guest.qcow2'
+# Optional, about three minutes: unattended Debian installation over NAT through the production profile.
+$env:UTM4WIN_TEST_NETWORK_INSTALL = '1'
+$env:UTM4WIN_TEST_EVIDENCE = 'C:\path\to\existing\evidence-folder'  # optional console captures
 dotnet test UTM4WIN.sln --no-build --filter "TestCategory=QemuIntegration"
 ```
+
+The network installation test serves a preseed and boot-report script from a loopback-only
+listener, installs into a new temporary disk, makes the guest request one outbound HTTP file
+from `deb.debian.org`, and locks the guest's random root password. It deletes its temporary
+directory afterwards.
 
 Lifecycle tests boot disposable guests and terminate only their owned test processes; image
 tests create unique temporary disks. The optional installed-guest test opens its source read-only
