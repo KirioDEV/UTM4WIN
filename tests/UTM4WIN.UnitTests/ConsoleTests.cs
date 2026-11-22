@@ -34,6 +34,44 @@ public sealed class ConsoleTests {
     }
 
     [TestMethod]
+    public async Task PointerFloodWhileSenderIsBusyCoalescesInsteadOfFaulting() {
+        var sent = new List<InputPacket>();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var input = new OrderedInput(async (packet, _) => { await gate.Task; lock (sent) sent.Add(packet); });
+        for (ushort i = 0; i < 10_000; i++)
+            input.Pointer(i, i, 0);
+        Assert.IsNull(input.Fault);
+        gate.SetResult();
+        await input.FlushAsync();
+        Assert.IsNull(input.Fault);
+        Assert.IsTrue(sent.Count <= 2, $"Expected coalesced moves, got {sent.Count}.");
+        Assert.AreEqual((ushort)9_999, sent[^1].X);
+    }
+
+    [TestMethod]
+    public async Task CoalescedMovesKeepOrderAroundButtonAndKeyEvents() {
+        var sent = new List<InputPacket>();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var input = new OrderedInput(async (packet, _) => { await gate.Task; lock (sent) sent.Add(packet); });
+        input.Pointer(1, 1, 0);
+        input.Pointer(2, 2, 0);
+        input.Pointer(3, 3, 0);
+        input.Pointer(3, 3, 1);
+        input.Pointer(4, 4, 1);
+        input.Pointer(5, 5, 1);
+        input.Down(97);
+        input.Pointer(6, 6, 1);
+        input.Up(97);
+        input.Pointer(7, 7, 0);
+        gate.SetResult();
+        await input.FlushAsync();
+        string wire = string.Join(" ", sent.Select(packet => packet.Kind == "Key" ? $"K{(packet.Down ? "d" : "u")}" : $"P{packet.X}/{packet.Buttons}"));
+        // The worker may claim the first move slot before later moves arrive, so only the tail is deterministic.
+        Assert.IsTrue(wire.EndsWith("P3/0 P3/1 P5/1 Kd P6/1 Ku P7/0", StringComparison.Ordinal), wire);
+        Assert.IsTrue(sent.Count <= 8, wire);
+    }
+
+    [TestMethod]
     public void ServerInitBoundsRejectLargeImagesAndNamesBeforeLibraryAllocation() {
         byte[] oversized = new byte[24];
         oversized[0] = 0x10;

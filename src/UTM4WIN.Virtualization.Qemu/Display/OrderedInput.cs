@@ -3,8 +3,14 @@ namespace UTM4WIN.Virtualization.Qemu.Display;
 
 internal sealed record InputPacket(string Kind, uint Key = 0, bool Down = false, ushort X = 0, ushort Y = 0, byte Buttons = 0);
 internal sealed class OrderedInput : IAsyncDisposable {
-    private sealed record Batch(InputPacket[] Packets, TaskCompletionSource? Barrier = null);
+    // A queued move slot that later moves overwrite until another event is queued behind it.
+    private sealed class PendingMove(InputPacket packet) {
+        public InputPacket Packet = packet;
+    }
+    private sealed record Batch(InputPacket[] Packets, TaskCompletionSource? Barrier = null, PendingMove? Move = null);
     private readonly Channel<Batch> _queue = Channel.CreateBounded<Batch>(new BoundedChannelOptions(64) { SingleReader = true, SingleWriter = true });
+    private readonly object _moveGate = new();
+    private PendingMove? _openMove;
     private readonly CancellationTokenSource _stop = new();
     private readonly HashSet<uint> _held = [];
     private readonly Func<InputPacket, CancellationToken, Task> _send;
@@ -37,7 +43,11 @@ internal sealed class OrderedInput : IAsyncDisposable {
         _held.Remove(key);
     }
     public void Pointer(ushort x, ushort y, byte buttons) {
-        Add([new("Pointer", X: x, Y: y, Buttons: buttons)]);
+        var packet = new InputPacket("Pointer", X: x, Y: y, Buttons: buttons);
+        if (buttons == _buttons)
+            AddMove(packet);
+        else
+            Add([packet]);
         _lastX = x;
         _lastY = y;
         _buttons = buttons;
@@ -62,14 +72,46 @@ internal sealed class OrderedInput : IAsyncDisposable {
         Add([], barrier);
         return barrier.Task.WaitAsync(TimeSpan.FromSeconds(5));
     }
+    // Pointer moves without a button change are coalesced: while a queued move has not been sent and
+    // nothing was queued after it, only its position is replaced. Order relative to keys and buttons is kept.
+    private void AddMove(InputPacket packet) {
+        ThrowIfUnusable();
+        lock (_moveGate) {
+            if (_openMove is not null) {
+                _openMove.Packet = packet;
+                return;
+            }
+            var move = new PendingMove(packet);
+            Write(new([], Move: move));
+            _openMove = move;
+        }
+    }
     private void Add(InputPacket[] packets, TaskCompletionSource? barrier = null) {
+        ThrowIfUnusable();
+        lock (_moveGate) {
+            _openMove = null;
+            Write(new(packets, barrier));
+        }
+    }
+    private void ThrowIfUnusable() {
         if (_fault is not null)
             throw new IOException("Input transmission failed.", _fault);
         _stop.Token.ThrowIfCancellationRequested();
-        if (!_queue.Writer.TryWrite(new(packets, barrier))) {
+    }
+    private void Write(Batch batch) {
+        if (!_queue.Writer.TryWrite(batch)) {
             _fault = new IOException("Input queue full or closed; input must be disconnected.");
             _stop.Cancel();
             throw _fault;
+        }
+    }
+    private InputPacket[] TakePackets(Batch batch) {
+        if (batch.Move is null)
+            return batch.Packets;
+        lock (_moveGate) {
+            if (ReferenceEquals(_openMove, batch.Move))
+                _openMove = null;
+            return [batch.Move.Packet];
         }
     }
     private async Task Run() {
@@ -77,7 +119,7 @@ internal sealed class OrderedInput : IAsyncDisposable {
         try {
             await foreach (Batch batch in _queue.Reader.ReadAllAsync(_stop.Token)) {
                 current = batch;
-                foreach (InputPacket packet in batch.Packets) {
+                foreach (InputPacket packet in TakePackets(batch)) {
                     using var deadline = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
                     deadline.CancelAfter(TimeSpan.FromSeconds(3));
                     await _send(packet, deadline.Token).WaitAsync(deadline.Token);
