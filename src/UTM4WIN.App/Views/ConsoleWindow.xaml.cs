@@ -11,7 +11,6 @@ namespace UTM4WIN.App.Views;
 
 public sealed partial class ConsoleWindow : Window {
     private readonly IVmDisplaySession _display;
-    private readonly DispatcherQueueTimer _timer;
     private readonly HashSet<uint> _held = [];
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private WriteableBitmap? _bitmap;
@@ -21,6 +20,8 @@ public sealed partial class ConsoleWindow : Window {
     private bool _connecting;
     private bool _painting;
     private string _actionError = "";
+    private string _scaleStatus = "";
+    private bool _rendering;
     public IVmDisplaySession Display => _display;
     private readonly HashSet<double> _observedScales = [];
 
@@ -31,10 +32,7 @@ public sealed partial class ConsoleWindow : Window {
         Root.RequestedTheme = theme;
         AppWindow.TitleBar.PreferredTheme = theme == ElementTheme.Dark ? Microsoft.UI.Windowing.TitleBarTheme.Dark : Microsoft.UI.Windowing.TitleBarTheme.Light;
         AppWindow.Resize(new SizeInt32(1024, 760));
-        _timer = DispatcherQueue.CreateTimer();
-        _timer.Interval = TimeSpan.FromMilliseconds(50);
-        _timer.Tick += OnTick;
-        _timer.Start();
+        StartRendering();
         Activated += async (_, args) => { if (args.WindowActivationState == WindowActivationState.Deactivated) await ReleaseAsync(); };
         AppWindow.Closing += async (_, args) => {
             if (_allowClose)
@@ -43,7 +41,7 @@ public sealed partial class ConsoleWindow : Window {
             if (_closing)
                 return;
             _closing = true;
-            _timer.Stop();
+            StopRendering();
             await ReleaseAsync();
             try {
                 await _display.DisconnectAsync();
@@ -51,7 +49,7 @@ public sealed partial class ConsoleWindow : Window {
             _allowClose = true;
             Close();
         };
-        Closed += (_, _) => { _timer.Stop(); _timer.Tick -= OnTick; GuestImage.Source = null; _bitmap = null; _closed.TrySetResult(); };
+        Closed += (_, _) => { StopRendering(); GuestImage.Source = null; _bitmap = null; _closed.TrySetResult(); };
         Root.Loaded += async (_, _) => { if (!_display.IsConnected) await ReconnectAsync(); };
     }
 
@@ -71,28 +69,52 @@ public sealed partial class ConsoleWindow : Window {
         }
     }
 
-    private async void OnTick(DispatcherQueueTimer sender, object args) {
+    // Polls once per composition frame so a new guest image is shown at the next display refresh
+    // instead of waiting for a fixed timer; unchanged frames cost only a sequence comparison.
+    private void StartRendering() {
+        if (_rendering)
+            return;
+        _rendering = true;
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnRendering;
+    }
+    private void StopRendering() {
+        if (!_rendering)
+            return;
+        _rendering = false;
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnRendering;
+    }
+    private static void SetText(Microsoft.UI.Xaml.Controls.TextBlock block, string text) {
+        if (block.Text != text)
+            block.Text = text;
+    }
+
+    private async void OnRendering(object? sender, object args) {
         if (_painting || _closing)
             return;
         _painting = true;
         try {
             var frame = _display.ReadFrame();
-            if (Root.XamlRoot is { } root)
-                _observedScales.Add(Math.Round(root.RasterizationScale, 3));
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(Surface,
-                "Scales " + string.Join(";", _observedScales.Order().Select(scale => scale.ToString(System.Globalization.CultureInfo.InvariantCulture))) + $"; held keys {_held.Count}");
-            ReconnectButton.IsEnabled = !_connecting && _display.CanReconnect;
+            if (Root.XamlRoot is { } root && _observedScales.Add(Math.Round(root.RasterizationScale, 3)))
+                _scaleStatus = "Scales " + string.Join(";", _observedScales.Order().Select(scale => scale.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            string surfaceStatus = _scaleStatus + $"; held keys {_held.Count}";
+            if (Microsoft.UI.Xaml.Automation.AutomationProperties.GetItemStatus(Surface) != surfaceStatus)
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(Surface, surfaceStatus);
+            bool canReconnect = !_connecting && _display.CanReconnect;
+            if (ReconnectButton.IsEnabled != canReconnect)
+                ReconnectButton.IsEnabled = canReconnect;
             if (frame is null) {
-                GuestImage.Source = null;
-                _bitmap = null;
-                _sequence = -1;
-                Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(GuestImage, "");
-                ConnectionStatus.Text = !_display.CanReconnect ? "Console closed. Check the VM state in your library." : _connecting ? "Connecting display…" : _display.IsConnected ? "Waiting for a guest image…" : "Display disconnected. The VM may still be running. " + (_display.Error.Length > 0 ? _display.Error : _actionError);
+                if (_bitmap is not null || _sequence != -1) {
+                    GuestImage.Source = null;
+                    _bitmap = null;
+                    _sequence = -1;
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(GuestImage, "");
+                }
+                SetText(ConnectionStatus, !_display.CanReconnect ? "Console closed. Check the VM state in your library." : _connecting ? "Connecting display…" : _display.IsConnected ? "Waiting for a guest image…" : "Display disconnected. The VM may still be running. " + (_display.Error.Length > 0 ? _display.Error : _actionError));
                 return;
             }
-            ConnectionStatus.Text = $"Connected · {frame.Width} × {frame.Height}";
             if (frame.Sequence == _sequence)
                 return;
+            SetText(ConnectionStatus, $"Connected · {frame.Width} × {frame.Height}");
             if (_bitmap is null || _bitmap.PixelWidth != frame.Width || _bitmap.PixelHeight != frame.Height) {
                 _bitmap = new(frame.Width, frame.Height);
                 GuestImage.Source = _bitmap;
@@ -102,7 +124,7 @@ public sealed partial class ConsoleWindow : Window {
             _bitmap.Invalidate();
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(GuestImage, $"Connection {_display.ConnectionGeneration}, frame {frame.Sequence}");
             _sequence = frame.Sequence;
-        } catch (Exception error) { ConnectionStatus.Text = "Display error: " + error.Message; GuestImage.Source = null; } finally { _painting = false; }
+        } catch (Exception error) { ConnectionStatus.Text = "Display error: " + error.Message; GuestImage.Source = null; _bitmap = null; } finally { _painting = false; }
     }
 
     private async Task ReleaseAsync() {

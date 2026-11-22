@@ -74,7 +74,8 @@ internal sealed class VncConnection : IRenderTarget, IDisposable {
                 AuthenticationHandler = new RejectPrompt(),
                 AllowSharedConnection = true,
                 InitialRenderTarget = this,
-                FramebufferUpdateDelay = TimeSpan.FromMilliseconds(100)
+                // Minimum gap between incremental update requests; caps the guest image at about 60 updates per second.
+                FramebufferUpdateDelay = TimeSpan.FromMilliseconds(16)
             };
             _connection = await Task.Run(() => client.ConnectAsync(parameters, token), token).ConfigureAwait(false);
         } catch (Exception error) {
