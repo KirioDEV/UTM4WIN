@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Graphics;
 using VirtualKey = Windows.System.VirtualKey;
@@ -22,6 +23,7 @@ public sealed partial class ConsoleWindow : Window {
     private string _actionError = "";
     private string _scaleStatus = "";
     private bool _rendering;
+    private bool _hostCursorHidden;
     public IVmDisplaySession Display => _display;
     private readonly HashSet<double> _observedScales = [];
 
@@ -33,7 +35,12 @@ public sealed partial class ConsoleWindow : Window {
         AppWindow.TitleBar.PreferredTheme = theme == ElementTheme.Dark ? Microsoft.UI.Windowing.TitleBarTheme.Dark : Microsoft.UI.Windowing.TitleBarTheme.Light;
         AppWindow.Resize(new SizeInt32(1024, 760));
         StartRendering();
-        Activated += async (_, args) => { if (args.WindowActivationState == WindowActivationState.Deactivated) await ReleaseAsync(); };
+        Activated += async (_, args) => {
+            if (args.WindowActivationState == WindowActivationState.Deactivated) {
+                SetHostCursorHidden(false);
+                await ReleaseAsync();
+            }
+        };
         AppWindow.Closing += async (_, args) => {
             if (_allowClose)
                 return;
@@ -49,7 +56,7 @@ public sealed partial class ConsoleWindow : Window {
             _allowClose = true;
             Close();
         };
-        Closed += (_, _) => { StopRendering(); GuestImage.Source = null; _bitmap = null; _closed.TrySetResult(); };
+        Closed += (_, _) => { SetHostCursorHidden(false); StopRendering(); GuestImage.Source = null; _bitmap = null; _closed.TrySetResult(); };
         Root.Loaded += async (_, _) => { if (!_display.IsConnected) await ReconnectAsync(); };
     }
 
@@ -127,7 +134,21 @@ public sealed partial class ConsoleWindow : Window {
         } catch (Exception error) { ConnectionStatus.Text = "Display error: " + error.Message; GuestImage.Source = null; _bitmap = null; } finally { _painting = false; }
     }
 
+    // The guest draws its own pointer (absolute USB tablet), so the host cursor is hidden while it is over the
+    // guest image to avoid two cursors. ShowCursor keeps a display counter; this flag keeps the calls balanced.
+    [DllImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static extern int ShowCursor([MarshalAs(UnmanagedType.Bool)] bool show);
+    private void SetHostCursorHidden(bool hidden) {
+        if (_hostCursorHidden == hidden)
+            return;
+        _hostCursorHidden = hidden;
+        ShowCursor(!hidden);
+    }
+    private void OnPointerExited(object sender, PointerRoutedEventArgs args) => SetHostCursorHidden(false);
+
     private async Task ReleaseAsync() {
+        SetHostCursorHidden(false);
         _held.Clear();
         Surface.ReleasePointerCaptures();
         try {
@@ -236,14 +257,17 @@ public sealed partial class ConsoleWindow : Window {
     }
     private void SendPointer(PointerRoutedEventArgs args) {
         var frame = _display.ReadFrame();
-        if (frame is null)
+        if (frame is null) {
+            SetHostCursorHidden(false);
             return;
+        }
         var point = args.GetCurrentPoint(Surface);
         var mapped = MapPointer(point.Position.X, point.Position.Y, Surface.ActualWidth, Surface.ActualHeight, frame.Width, frame.Height);
         if (mapped is null) {
             _ = ReleaseAsync();
             return;
         }
+        SetHostCursorHidden(!_closing && !_connecting && _display.IsConnected);
         byte buttons = (byte)((point.Properties.IsLeftButtonPressed ? 1 : 0) | (point.Properties.IsMiddleButtonPressed ? 2 : 0) | (point.Properties.IsRightButtonPressed ? 4 : 0));
         Input(() => _display.Pointer(mapped.Value.X, mapped.Value.Y, buttons));
         args.Handled = true;

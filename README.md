@@ -167,6 +167,8 @@ with mutually authenticated TLS and a pinned server certificate. QMP remains iso
 stdio. No certificate is installed in the Windows trust store. The console supports
 bounded Raw/ZLib frames up to 2048 × 2048, basic keyboard input and an absolute USB tablet.
 Click the guest to focus input; Ctrl+Alt+Escape or **Release input** releases held input.
+The Windows cursor is hidden while it is over the guest image, so only the guest's own pointer
+is visible; it reappears over the letterbox, outside the console or when the window loses focus.
 **Reconnect display** reconnects the console without restarting the VM. Closing the
 console keeps the VM running; **Open console** opens it again. The library preview remains
 a placeholder. Running means QEMU confirms running virtual CPUs, not a fully booted OS.

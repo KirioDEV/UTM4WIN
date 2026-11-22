@@ -12,7 +12,7 @@
             <Button x:Name="ReconnectButton" Grid.Column="2" Content="Reconnect display" Click="OnReconnect" />
         </Grid>
         <ContentControl x:Name="Surface" Grid.Row="1" Background="Black" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" IsTabStop="True" AutomationProperties.Name="Guest console"
-                        KeyDown="OnKeyDown" KeyUp="OnKeyUp" PointerPressed="OnPointerPressed" PointerMoved="OnPointerMoved" PointerReleased="OnPointerReleased" PointerCanceled="OnPointerCanceled" PointerCaptureLost="OnPointerCanceled" LostFocus="OnLostFocus">
+                        KeyDown="OnKeyDown" KeyUp="OnKeyUp" PointerPressed="OnPointerPressed" PointerMoved="OnPointerMoved" PointerExited="OnPointerExited" PointerReleased="OnPointerReleased" PointerCanceled="OnPointerCanceled" PointerCaptureLost="OnPointerCanceled" LostFocus="OnLostFocus">
             <Grid Background="Black">
                 <Image x:Name="GuestImage" Stretch="Uniform" AutomationProperties.Name="Guest framebuffer" />
             </Grid>
