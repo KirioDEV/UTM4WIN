@@ -23,9 +23,17 @@ namespace UTM4WIN.Virtualization.Qemu.Display;
 internal sealed class VncConnection : IRenderTarget, IDisposable {
     private RfbConnection? _connection;
     private readonly object _gate = new();
+    // The decoder writes into _framebuffer outside _gate. Completed updates are copied into the reused
+    // _published buffer under _gate, limited to the rectangles the update touched, so a frame costs neither a
+    // full-buffer allocation nor a full-buffer copy.
     private byte[] _framebuffer = [];
-    private Snapshot? _snapshot;
-    private Snapshot? _staged;
+    private Size _framebufferSize;
+    private byte[] _published = [];
+    private int _publishedWidth;
+    private int _publishedHeight;
+    private bool _staged;
+    private bool _publishAll = true;
+    private readonly List<Rectangle> _dirty = [];
     private PinnedVeNCrypt? _security;
     private readonly bool _guarded;
     private readonly string _codec;
@@ -47,13 +55,6 @@ internal sealed class VncConnection : IRenderTarget, IDisposable {
     public int RejectedUpdates {
         get; private set;
     }
-    public int Width {
-        get; private set;
-    }
-    public int Height {
-        get; private set;
-    }
-    public byte[] Pixels { get; private set; } = [];
     public int ReceivedFrames {
         get; private set;
     }
@@ -87,19 +88,6 @@ internal sealed class VncConnection : IRenderTarget, IDisposable {
             throw;
         }
     }
-    public async Task FrameAsync(CancellationToken token) {
-        while (true) {
-            lock (_gate) {
-                if (_snapshot is { } frame) {
-                    Width = frame.Width;
-                    Height = frame.Height;
-                    Pixels = (byte[])frame.Pixels.Clone();
-                    return;
-                }
-            }
-            await Task.Delay(20, token);
-        }
-    }
     public Task KeyAsync(uint key, CancellationToken token) {
         token.ThrowIfCancellationRequested();
         _connection!.EnqueueMessage(new KeyEventMessage(true, (KeySymbol)key), token);
@@ -122,23 +110,24 @@ internal sealed class VncConnection : IRenderTarget, IDisposable {
         if (size.Width < 1 || size.Height < 1 || size.Width > 2048 || size.Height > 2048)
             throw new InvalidDataException("Framebuffer exceeds diagnostic bounds.");
         int length = checked(size.Width * size.Height * 4);
-        if (_framebuffer.Length != length)
+        if (_framebuffer.Length != length || _framebufferSize != size) {
             _framebuffer = new byte[length];
+            _framebufferSize = size;
+            _publishAll = true;
+        }
         return new Lease(_framebuffer, size, () => {
-            var snapshot = (byte[])_framebuffer.Clone();
-            for (int i = 3; i < snapshot.Length; i += 4)
-                snapshot[i] = 255;
             lock (_gate) {
-                var frame = new Snapshot(size.Width, size.Height, snapshot);
                 if (_guarded)
-                    _staged = frame;
+                    _staged = true;
                 else {
-                    _snapshot = frame;
-                    ReceivedFrames++;
+                    _publishAll = true;
+                    PublishLocked();
                 }
             }
         });
     }
+    // Called by the guarded decoder for every validated top-level rectangle of the current update.
+    internal void MarkDirty(in Rectangle rectangle) => _dirty.Add(rectangle);
     public async Task CloseAsync() {
         if (_connection is { } connection) {
             _connection = null;
@@ -151,30 +140,73 @@ internal sealed class VncConnection : IRenderTarget, IDisposable {
     }
     public void Dispose() => _security?.Dispose();
     internal void BeginUpdate() {
-        lock (_gate)
-            _staged = null;
+        lock (_gate) {
+            _staged = false;
+            _dirty.Clear();
+        }
     }
     internal void CompleteUpdate() {
         lock (_gate) {
-            if (_staged is not null) {
-                _snapshot = _staged;
-                ReceivedFrames++;
-                _staged = null;
-            }
+            if (_staged)
+                PublishLocked();
+            _staged = false;
+            _dirty.Clear();
         }
     }
     internal void RejectUpdate() {
         lock (_gate) {
-            _staged = null;
+            _staged = false;
+            _dirty.Clear();
+            // The working buffer may hold part of the rejected update; never publish it partially later.
+            _publishAll = true;
             RejectedUpdates++;
+        }
+    }
+    internal UTM4WIN.Application.VmDisplayFrameInfo? ReadFrameInfo() {
+        lock (_gate) {
+            return ReceivedFrames > 0 ? new(_publishedWidth, _publishedHeight, ReceivedFrames) : null;
+        }
+    }
+    internal bool TryCopyFrame(Span<byte> destination, out UTM4WIN.Application.VmDisplayFrameInfo info) {
+        lock (_gate) {
+            info = new(_publishedWidth, _publishedHeight, ReceivedFrames);
+            if (ReceivedFrames == 0 || destination.Length != _published.Length)
+                return false;
+            _published.CopyTo(destination);
+            return true;
         }
     }
     internal UTM4WIN.Application.VmDisplayFrame? ReadFrame() {
         lock (_gate) {
-            return _snapshot is { } frame ? new(frame.Width, frame.Height, frame.Pixels, ReceivedFrames) : null;
+            return ReceivedFrames > 0 ? new(_publishedWidth, _publishedHeight, (byte[])_published.Clone(), ReceivedFrames) : null;
         }
     }
-    private sealed record Snapshot(int Width, int Height, byte[] Pixels);
+    private void PublishLocked() {
+        int width = _framebufferSize.Width, height = _framebufferSize.Height;
+        if (_publishAll || _publishedWidth != width || _publishedHeight != height || _published.Length != _framebuffer.Length) {
+            if (_published.Length != _framebuffer.Length)
+                _published = new byte[_framebuffer.Length];
+            _publishedWidth = width;
+            _publishedHeight = height;
+            CopyOpaque(0, 0, width, height);
+            _publishAll = false;
+        } else {
+            foreach (var rectangle in _dirty)
+                CopyOpaque(rectangle.Position.X, rectangle.Position.Y, rectangle.Size.Width, rectangle.Size.Height);
+        }
+        ReceivedFrames++;
+    }
+    // Copies one region row by row and forces the alpha byte of each BGRA pixel to opaque.
+    private void CopyOpaque(int x, int y, int width, int height) {
+        int stride = _publishedWidth * 4, rowLength = width * 4;
+        for (int row = y; row < y + height; row++) {
+            int offset = row * stride + x * 4;
+            var target = _published.AsSpan(offset, rowLength);
+            _framebuffer.AsSpan(offset, rowLength).CopyTo(target);
+            for (int i = 3; i < rowLength; i += 4)
+                target[i] = 255;
+        }
+    }
     private sealed class Lease : IFramebufferReference {
         private readonly GCHandle _pin;
         private readonly Action _completed;

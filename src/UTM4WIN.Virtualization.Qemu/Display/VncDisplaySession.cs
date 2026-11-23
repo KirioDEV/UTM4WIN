@@ -15,6 +15,11 @@ internal sealed class VncDisplaySession(DisplayMaterial material) : IVmDisplaySe
     public bool IsConnected => _connection is { ProtocolFault: null, State: "Connected" } && _input is { Fault: null };
     public string Error => _connection?.ProtocolFault?.Message ?? _input?.Fault?.Message ?? "";
     public VmDisplayFrame? ReadFrame() => IsConnected ? _connection?.ReadFrame() : null;
+    public VmDisplayFrameInfo? ReadFrameInfo() => IsConnected ? _connection?.ReadFrameInfo() : null;
+    public bool TryCopyFrame(Span<byte> destination, out VmDisplayFrameInfo info) {
+        info = default;
+        return IsConnected && _connection is { } connection && connection.TryCopyFrame(destination, out info);
+    }
 
     public async Task ReconnectAsync(CancellationToken cancellationToken = default) {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);

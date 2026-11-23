@@ -15,6 +15,8 @@ public sealed partial class ConsoleWindow : Window {
     private readonly HashSet<uint> _held = [];
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private WriteableBitmap? _bitmap;
+    // Reused copy target; the guest frame is copied here under the display lock, then written to the bitmap.
+    private byte[] _staging = [];
     private long _sequence = -1;
     private bool _closing;
     private bool _allowClose;
@@ -95,12 +97,12 @@ public sealed partial class ConsoleWindow : Window {
             block.Text = text;
     }
 
-    private async void OnRendering(object? sender, object args) {
+    private void OnRendering(object? sender, object args) {
         if (_painting || _closing)
             return;
         _painting = true;
         try {
-            var frame = _display.ReadFrame();
+            var frame = _display.ReadFrameInfo();
             if (Root.XamlRoot is { } root && _observedScales.Add(Math.Round(root.RasterizationScale, 3)))
                 _scaleStatus = "Scales " + string.Join(";", _observedScales.Order().Select(scale => scale.ToString(System.Globalization.CultureInfo.InvariantCulture)));
             string surfaceStatus = _scaleStatus + $"; held keys {_held.Count}";
@@ -119,18 +121,25 @@ public sealed partial class ConsoleWindow : Window {
                 SetText(ConnectionStatus, !_display.CanReconnect ? "Console closed. Check the VM state in your library." : _connecting ? "Connecting display…" : _display.IsConnected ? "Waiting for a guest image…" : "Display disconnected. The VM may still be running. " + (_display.Error.Length > 0 ? _display.Error : _actionError));
                 return;
             }
-            if (frame.Sequence == _sequence)
+            var info = frame.Value;
+            if (info.Sequence == _sequence)
                 return;
-            SetText(ConnectionStatus, $"Connected · {frame.Width} × {frame.Height}");
-            if (_bitmap is null || _bitmap.PixelWidth != frame.Width || _bitmap.PixelHeight != frame.Height) {
-                _bitmap = new(frame.Width, frame.Height);
+            int length = checked(info.Width * info.Height * 4);
+            if (_staging.Length != length)
+                _staging = new byte[length];
+            // A resize between ReadFrameInfo and the copy fails the size check; the next composition frame retries.
+            if (!_display.TryCopyFrame(_staging, out info))
+                return;
+            SetText(ConnectionStatus, $"Connected · {info.Width} × {info.Height}");
+            if (_bitmap is null || _bitmap.PixelWidth != info.Width || _bitmap.PixelHeight != info.Height) {
+                _bitmap = new(info.Width, info.Height);
                 GuestImage.Source = _bitmap;
             }
-            using var pixels = _bitmap.PixelBuffer.AsStream();
-            await pixels.WriteAsync(frame.Pixels);
+            using (var pixels = _bitmap.PixelBuffer.AsStream())
+                pixels.Write(_staging, 0, length);
             _bitmap.Invalidate();
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(GuestImage, $"Connection {_display.ConnectionGeneration}, frame {frame.Sequence}");
-            _sequence = frame.Sequence;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(GuestImage, $"Connection {_display.ConnectionGeneration}, frame {info.Sequence}");
+            _sequence = info.Sequence;
         } catch (Exception error) { ConnectionStatus.Text = "Display error: " + error.Message; GuestImage.Source = null; _bitmap = null; } finally { _painting = false; }
     }
 
@@ -256,8 +265,7 @@ public sealed partial class ConsoleWindow : Window {
         Surface.ReleasePointerCapture(args.Pointer);
     }
     private void SendPointer(PointerRoutedEventArgs args) {
-        var frame = _display.ReadFrame();
-        if (frame is null) {
+        if (_display.ReadFrameInfo() is not { } frame) {
             SetHostCursorHidden(false);
             return;
         }

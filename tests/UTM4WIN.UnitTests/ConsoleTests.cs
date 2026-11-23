@@ -1,5 +1,8 @@
 using System.Collections.Immutable;
+using System.Runtime.InteropServices;
+using MarcusW.VncClient;
 using UTM4WIN.App.Views;
+using UTM4WIN.Application;
 using UTM4WIN.Virtualization.Qemu.Display;
 
 namespace UTM4WIN.UnitTests;
@@ -77,5 +80,72 @@ public sealed class ConsoleTests {
         oversized[0] = 0x10;
         using var stream = new InitReadStream(new MemoryStream(oversized));
         Assert.Throws<InvalidDataException>(() => stream.Read(new byte[24]));
+    }
+
+    [TestMethod]
+    public void CompletedUpdatesPublishOnlyTouchedRectanglesWithOpaqueAlpha() {
+        using var connection = new VncConnection();
+        Assert.IsNull(connection.ReadFrameInfo());
+        Assert.IsFalse(connection.TryCopyFrame(new byte[32], out _));
+        DecodeUpdate(connection, 4, 2, Enumerable.Repeat((byte)1, 32).ToArray(), new Rectangle(new Position(0, 0), new Size(4, 2)));
+        var copy = new byte[32];
+        Assert.IsTrue(connection.TryCopyFrame(copy, out var first));
+        Assert.AreEqual(new VmDisplayFrameInfo(4, 2, 1), first);
+        Assert.IsTrue(copy.Where((_, index) => index % 4 == 3).All(alpha => alpha == 255));
+        Assert.IsTrue(copy.Where((_, index) => index % 4 != 3).All(value => value == 1));
+
+        // The decoder buffer changes everywhere, but the update only reports pixel (1, 1) as touched.
+        DecodeUpdate(connection, 4, 2, Enumerable.Repeat((byte)9, 32).ToArray(), new Rectangle(new Position(1, 1), new Size(1, 1)));
+        Assert.IsTrue(connection.TryCopyFrame(copy, out var second));
+        Assert.AreEqual(2, second.Sequence);
+        int touched = (1 * 4 + 1) * 4;
+        for (int index = 0; index < copy.Length; index++) {
+            byte expected = index % 4 == 3 ? (byte)255 : index >= touched && index < touched + 4 ? (byte)9 : (byte)1;
+            Assert.AreEqual(expected, copy[index], $"Byte {index}");
+        }
+        Assert.IsFalse(connection.TryCopyFrame(new byte[16], out _), "A destination of the wrong size must not receive a partial frame.");
+    }
+
+    [TestMethod]
+    public void RejectedUpdateIsNotPublishedAndForcesTheNextUpdateToPublishTheWholeImage() {
+        using var connection = new VncConnection();
+        DecodeUpdate(connection, 2, 1, Enumerable.Repeat((byte)1, 8).ToArray(), new Rectangle(new Position(0, 0), new Size(2, 1)));
+        connection.BeginUpdate();
+        using (var lease = connection.GrabFramebufferReference(new Size(2, 1), ImmutableHashSet<Screen>.Empty))
+            Marshal.Copy(Enumerable.Repeat((byte)7, 8).ToArray(), 0, lease.Address, 8);
+        connection.RejectUpdate();
+        var copy = new byte[8];
+        Assert.IsTrue(connection.TryCopyFrame(copy, out var info));
+        Assert.AreEqual(1, info.Sequence);
+        Assert.AreEqual((byte)1, copy[0]);
+        Assert.AreEqual(1, connection.RejectedUpdates);
+
+        DecodeUpdate(connection, 2, 1, null, new Rectangle(new Position(0, 0), new Size(1, 1)));
+        Assert.IsTrue(connection.TryCopyFrame(copy, out info));
+        Assert.AreEqual(2, info.Sequence);
+        Assert.AreEqual((byte)7, copy[4], "Pixels left by the rejected update must not stay hidden behind a partial copy.");
+    }
+
+    [TestMethod]
+    public void DesktopResizePublishesTheNewSizeCompletely() {
+        using var connection = new VncConnection();
+        DecodeUpdate(connection, 2, 2, Enumerable.Repeat((byte)1, 16).ToArray(), new Rectangle(new Position(0, 0), new Size(2, 2)));
+        DecodeUpdate(connection, 3, 1, Enumerable.Repeat((byte)5, 12).ToArray(), new Rectangle(new Position(0, 0), new Size(1, 1)));
+        Assert.AreEqual(new VmDisplayFrameInfo(3, 1, 2), connection.ReadFrameInfo());
+        Assert.IsFalse(connection.TryCopyFrame(new byte[16], out _));
+        var copy = new byte[12];
+        Assert.IsTrue(connection.TryCopyFrame(copy, out _));
+        Assert.IsTrue(copy.Where((_, index) => index % 4 != 3).All(value => value == 5));
+    }
+
+    private static void DecodeUpdate(VncConnection connection, int width, int height, byte[]? pixels, params Rectangle[] touched) {
+        connection.BeginUpdate();
+        using (var lease = connection.GrabFramebufferReference(new Size(width, height), ImmutableHashSet<Screen>.Empty)) {
+            if (pixels is not null)
+                Marshal.Copy(pixels, 0, lease.Address, pixels.Length);
+            foreach (var rectangle in touched)
+                connection.MarkDirty(rectangle);
+        }
+        connection.CompleteUpdate();
     }
 }

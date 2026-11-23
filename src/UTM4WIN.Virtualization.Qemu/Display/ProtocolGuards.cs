@@ -51,6 +51,8 @@ internal sealed class GuardEncoding(IFrameEncodingType inner, RfbConnectionConte
         }
         if (guarded && (rectangle.IsEmpty() || !rectangle.FitsInside(size)))
             throw new InvalidDataException("Frame rectangle is outside bounds.");
+        if (guarded && !nested)
+            owner.MarkDirty(rectangle);
         if (guarded && inner.Id == 6) {
             var inflater = (BoundedInflater)context.ZLibInflater!;
             inner.ReadFrameEncoding(stream, target, rectangle, size, format);
